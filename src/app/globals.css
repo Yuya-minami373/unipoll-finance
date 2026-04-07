@@ -1,0 +1,93 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-50: #f0fdf4;
+  --color-brand-100: #dcfce7;
+  --color-brand-200: #bbf7d0;
+  --color-brand-400: #4ade80;
+  --color-brand-500: #22c55e;
+  --color-brand-600: #16a34a;
+  --color-brand-700: #15803d;
+  --color-brand-800: #166534;
+  --color-brand-900: #14532d;
+  --color-surface: #f8fafc;
+  --color-surface-raised: #ffffff;
+  --color-danger: #ef4444;
+  --color-warning: #f59e0b;
+  --color-safe: #22c55e;
+}
+
+body {
+  font-feature-settings: "palt";
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Sidebar */
+.sidebar-container {
+  background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+}
+
+/* Cards */
+.card {
+  background: var(--color-surface-raised);
+  border-radius: 0.75rem;
+  border: 1px solid #e2e8f0;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.card:hover {
+  box-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.08);
+}
+.card-interactive:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 32px -4px rgba(0, 0, 0, 0.12);
+}
+
+/* Gradient cards */
+.gradient-runway {
+  background: linear-gradient(135deg, #dcfce7 0%, #d1fae5 100%);
+}
+.gradient-cash {
+  background: linear-gradient(135deg, #dbeafe 0%, #e0e7ff 100%);
+}
+.gradient-revenue {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+}
+.gradient-burn {
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+}
+
+/* Progress bar */
+.progress-bar {
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+/* Number animation */
+@keyframes countUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-count {
+  animation: countUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Pulse for warning */
+@keyframes pulse-warning {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+.pulse-warning {
+  animation: pulse-warning 2s ease-in-out infinite;
+}
