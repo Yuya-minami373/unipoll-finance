@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { dbRun } from "@/lib/db";
 
 // POST /api/sync - Update financial data
@@ -136,6 +137,14 @@ export async function POST(req: NextRequest) {
     await dbRun("INSERT INTO sync_log (source, details) VALUES ('freee', ?)",
       `Synced: ${parts.join(', ') || 'no data'}`
     );
+
+    // Invalidate all cached pages after sync
+    revalidatePath("/");
+    revalidatePath("/monthly-pl");
+    revalidatePath("/service-pl");
+    revalidatePath("/projects");
+    revalidatePath("/funding");
+    revalidatePath("/settings");
 
     return NextResponse.json({ ok: true, message: "Synced successfully" });
   } catch (err: unknown) {

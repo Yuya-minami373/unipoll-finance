@@ -18,9 +18,13 @@ export default async function FundingPage() {
   ]);
 
   // Build expense sub-category map: { "2026-01": { "通信費": [{ sub_category, amount }] } }
+  // Fetch all months in parallel instead of sequentially
+  const breakdowns = await Promise.all(
+    fundingMonths.map(m => getExpenseBreakdown(m.year_month))
+  );
   const expenseSubCategories: Record<string, Record<string, Array<{ sub_category: string; amount: number }>>> = {};
-  for (const m of fundingMonths) {
-    const breakdown = await getExpenseBreakdown(m.year_month);
+  for (let i = 0; i < fundingMonths.length; i++) {
+    const breakdown = breakdowns[i];
     const byCat: Record<string, Array<{ sub_category: string; amount: number }>> = {};
     for (const e of breakdown) {
       if (!e.sub_category) continue;
@@ -28,7 +32,7 @@ export default async function FundingPage() {
       byCat[e.category].push({ sub_category: String(e.sub_category), amount: Number(e.amount) });
     }
     if (Object.keys(byCat).length > 0) {
-      expenseSubCategories[m.year_month] = byCat;
+      expenseSubCategories[fundingMonths[i].year_month] = byCat;
     }
   }
 

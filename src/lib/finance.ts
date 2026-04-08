@@ -106,11 +106,13 @@ export async function getMonthlyFixedCostEstimate(): Promise<number> {
 
 // Calculate runway using estimate (not historical)
 export async function getRunwayWithEstimate(): Promise<{ months: number; cashTotal: number; monthlyBurn: number }> {
-  const snapshot = await getLatestSnapshot();
+  const [snapshot, monthlyBurn] = await Promise.all([
+    getLatestSnapshot(),
+    getMonthlyFixedCostEstimate(),
+  ]);
   if (!snapshot) return { months: 0, cashTotal: 0, monthlyBurn: 0 };
 
   const cashTotal = snapshot.cash_balance + snapshot.bank_balance;
-  const monthlyBurn = await getMonthlyFixedCostEstimate();
   const months = monthlyBurn > 0 ? cashTotal / monthlyBurn : 99;
 
   return { months: Math.round(months * 10) / 10, cashTotal, monthlyBurn };
@@ -126,25 +128,27 @@ export async function getEffectiveRunway(): Promise<{
   effectiveCash: number;
   effectiveBurn: number;
 }> {
-  const snapshot = await getLatestSnapshot();
-  if (!snapshot) return { months: 0, cashTotal: 0, monthlyBurn: 0, pendingReceivables: 0, monthlyLoanRepayment: 0, effectiveCash: 0, effectiveBurn: 0 };
-
-  const cashTotal = snapshot.cash_balance + snapshot.bank_balance;
-  const monthlyBurn = await getMonthlyFixedCostEstimate();
-
-  // Pending receivables (within next 3 months)
+  // Pending receivables cutoff
   const threeMonthsLater = new Date();
   threeMonthsLater.setMonth(threeMonthsLater.getMonth() + 3);
   const cutoff = threeMonthsLater.toISOString().split("T")[0];
-  const pendingRow = await dbGet(
-    "SELECT COALESCE(SUM(amount), 0) as total FROM receivables WHERE status = 'pending' AND due_date <= ?", cutoff
-  ) as { total: number };
-  const pendingReceivables = Number(pendingRow?.total || 0);
 
-  // Monthly loan repayment from funding_items (financing_expense)
-  const loanRow = await dbGet(
-    "SELECT AVG(amount) as avg_amount FROM funding_items WHERE section = 'financing_expense'"
-  ) as { avg_amount: number | null };
+  // Run all 4 queries in parallel
+  const [snapshot, monthlyBurn, pendingRow, loanRow] = await Promise.all([
+    getLatestSnapshot(),
+    getMonthlyFixedCostEstimate(),
+    dbGet(
+      "SELECT COALESCE(SUM(amount), 0) as total FROM receivables WHERE status = 'pending' AND due_date <= ?", cutoff
+    ) as unknown as Promise<{ total: number }>,
+    dbGet(
+      "SELECT AVG(amount) as avg_amount FROM funding_items WHERE section = 'financing_expense'"
+    ) as unknown as Promise<{ avg_amount: number | null }>,
+  ]);
+
+  if (!snapshot) return { months: 0, cashTotal: 0, monthlyBurn: 0, pendingReceivables: 0, monthlyLoanRepayment: 0, effectiveCash: 0, effectiveBurn: 0 };
+
+  const cashTotal = snapshot.cash_balance + snapshot.bank_balance;
+  const pendingReceivables = Number(pendingRow?.total || 0);
   const monthlyLoanRepayment = Math.round(Number(loanRow?.avg_amount || 0));
 
   const effectiveCash = cashTotal + pendingReceivables;
@@ -208,16 +212,20 @@ export async function getExpenseTotalsByMonth(): Promise<Array<{ year_month: str
   `) as unknown as Array<{ year_month: string; fixed: number; variable: number; total: number }>;
 }
 
-// Get YTD summary
+// Get YTD summary — uses a single aggregate query instead of fetching all snapshots
 export async function getYTDSummary(): Promise<{ revenue: number; expense: number; netIncome: number; months: number }> {
-  const snapshots = await getAllSnapshots();
-  const revenue = snapshots.reduce((s, snap) => s + Number(snap.total_revenue), 0);
-  const expense = snapshots.reduce((s, snap) => s + Number(snap.total_expense), 0);
+  const row = await dbGet(`
+    SELECT COALESCE(SUM(total_revenue), 0) as revenue,
+           COALESCE(SUM(total_expense), 0) as expense,
+           COUNT(*) as months
+    FROM monthly_snapshots
+  `) as unknown as { revenue: number; expense: number; months: number } | null;
+  if (!row || row.months === 0) return { revenue: 0, expense: 0, netIncome: 0, months: 0 };
   return {
-    revenue,
-    expense,
-    netIncome: revenue - expense,
-    months: snapshots.length,
+    revenue: Number(row.revenue),
+    expense: Number(row.expense),
+    netIncome: Number(row.revenue) - Number(row.expense),
+    months: Number(row.months),
   };
 }
 
@@ -299,12 +307,13 @@ export interface FundingWeek {
 }
 
 export async function getWeeklyFunding(weeks: number = 8): Promise<FundingWeek[]> {
-  const snapshot = await getLatestSnapshot();
+  const [snapshot, recurring, receivables, fixedCost] = await Promise.all([
+    getLatestSnapshot(),
+    getRecurringItems(),
+    dbAll("SELECT * FROM receivables WHERE status = 'pending' ORDER BY due_date ASC") as unknown as Promise<Receivable[]>,
+    getMonthlyFixedCostEstimate(),
+  ]);
   if (!snapshot) return [];
-
-  const recurring = await getRecurringItems();
-  const receivables = await dbAll("SELECT * FROM receivables WHERE status = 'pending' ORDER BY due_date ASC") as unknown as Receivable[];
-  const fixedCost = await getMonthlyFixedCostEstimate();
 
   let balance = Number(snapshot.cash_balance) + Number(snapshot.bank_balance);
   const result: FundingWeek[] = [];
@@ -471,23 +480,31 @@ export const EXPENSE_CATEGORIES = [
 ];
 
 export async function getFundingMonths(): Promise<FundingMonth[]> {
-  const months = await dbAll(
-    "SELECT DISTINCT year_month FROM funding_items ORDER BY year_month ASC"
-  ) as unknown as Array<{ year_month: string }>;
+  // Fetch all items and balances in just 2 queries (instead of 2 per month)
+  const [allItems, allBalances] = await Promise.all([
+    dbAll("SELECT * FROM funding_items ORDER BY year_month ASC, section, category, id") as unknown as Promise<FundingItem[]>,
+    dbAll("SELECT year_month, opening_balance FROM funding_balances") as unknown as Promise<Array<{ year_month: string; opening_balance: number }>>,
+  ]);
 
-  if (months.length === 0) return [];
+  if (allItems.length === 0) return [];
+
+  // Group items by year_month
+  const itemsByMonth = new Map<string, FundingItem[]>();
+  for (const item of allItems) {
+    const ym = String(item.year_month);
+    if (!itemsByMonth.has(ym)) itemsByMonth.set(ym, []);
+    itemsByMonth.get(ym)!.push(item);
+  }
+
+  // Build balance lookup
+  const balanceMap = new Map<string, number>();
+  for (const b of allBalances) {
+    balanceMap.set(String(b.year_month), Number(b.opening_balance));
+  }
 
   const result: FundingMonth[] = [];
 
-  for (const { year_month } of months) {
-    const items = await dbAll(
-      "SELECT * FROM funding_items WHERE year_month = ? ORDER BY section, category, id", year_month
-    ) as unknown as FundingItem[];
-
-    const balanceRow = await dbGet(
-      "SELECT opening_balance FROM funding_balances WHERE year_month = ?", year_month
-    ) as { opening_balance: number } | null;
-
+  for (const [year_month, items] of itemsByMonth) {
     const bySection = (section: string) => items.filter(i => i.section === section);
     const sectionTotal = (section: string) => bySection(section).reduce((s, i) => s + Number(i.amount), 0);
 
@@ -503,7 +520,7 @@ export async function getFundingMonths(): Promise<FundingMonth[]> {
     const finNet = finIncome - finExpense;
     const totalNet = opNet + invNet + finNet;
 
-    const opening = Number(balanceRow?.opening_balance ?? 0);
+    const opening = balanceMap.get(year_month) ?? 0;
     const closing = opening + totalNet;
 
     const isActual = items.some(i => Number(i.is_actual) === 1);
@@ -589,8 +606,10 @@ export async function deleteBudget(yearMonth: string): Promise<void> {
 
 // Cash flow forecast for dashboard chart
 export async function getCashForecast(forecastMonths: number = 6): Promise<Array<{ month: string; balance: number; isActual: boolean }>> {
-  const fundingMonths = await getFundingMonths();
-  const snapshot = await getLatestSnapshot();
+  const [fundingMonths, snapshot] = await Promise.all([
+    getFundingMonths(),
+    getLatestSnapshot(),
+  ]);
   if (!snapshot) return [];
 
   const result: Array<{ month: string; balance: number; isActual: boolean }> = [];

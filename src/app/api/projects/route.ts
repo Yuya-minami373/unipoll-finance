@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { dbAll, dbRun } from "@/lib/db";
 
 export async function GET() {
@@ -22,6 +23,7 @@ export async function POST(req: NextRequest) {
         notes = excluded.notes
     `, year_month, municipality, service_name, revenue || 0, cost || 0, gross_profit, notes || null);
 
+    revalidatePath("/projects");
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -33,6 +35,7 @@ export async function DELETE(req: NextRequest) {
   try {
     const { id } = await req.json();
     await dbRun("DELETE FROM project_profitability WHERE id = ?", id);
+    revalidatePath("/projects");
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";

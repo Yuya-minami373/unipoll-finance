@@ -24,7 +24,7 @@ import BSCard from "@/components/BSCard";
 export const dynamic = "force-dynamic";
 
 export default async function Dashboard() {
-  const [runway, effRunway, snapshot, servicePL, lastSync, snapshots, ytd, expenseTrend, bsSnapshot, fundingDanger, cashForecast] = await Promise.all([
+  const [runway, effRunway, snapshot, servicePL, lastSync, snapshots, ytd, expenseTrend, bsSnapshot, fundingDanger, cashForecast, fixedCostEstimate] = await Promise.all([
     getRunwayWithEstimate(),
     getEffectiveRunway(),
     getLatestSnapshot(),
@@ -36,16 +36,16 @@ export default async function Dashboard() {
     getLatestBS(),
     getFundingDangerMonths(),
     getCashForecast(),
+    getMonthlyFixedCostEstimate(),
   ]);
 
   if (!snapshot) {
     return <p className="text-slate-500 mt-8">データがありません。freeeから同期してください。</p>;
   }
 
-  const latestExpenses = await getExpenseBreakdown(snapshot.year_month);
+  const latestExpenses = await getExpenseBreakdown(String(snapshot.year_month));
   const fixedTotal = latestExpenses.filter(e => e.is_fixed).reduce((s, e) => s + Number(e.amount), 0);
   const variableTotal = latestExpenses.filter(e => !e.is_fixed).reduce((s, e) => s + Number(e.amount), 0);
-  const fixedCostEstimate = await getMonthlyFixedCostEstimate();
 
   // Monthly revenue trend
   const totalRevenue = snapshots.reduce((s, snap) => s + Number(snap.total_revenue), 0);

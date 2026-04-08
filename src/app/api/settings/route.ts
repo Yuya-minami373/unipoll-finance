@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getSetting, setSetting } from "@/lib/finance";
 
 export async function GET() {
@@ -17,6 +18,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     if (body.monthly_fixed_cost_estimate !== undefined) {
       await setSetting("monthly_fixed_cost_estimate", String(Math.round(body.monthly_fixed_cost_estimate)));
+      revalidatePath("/");
+      revalidatePath("/settings");
     }
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {

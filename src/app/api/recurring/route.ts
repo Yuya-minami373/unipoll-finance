@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { addRecurringItem, updateRecurringItem, deleteRecurringItem } from "@/lib/finance";
 
 export async function POST(req: NextRequest) {
@@ -9,6 +10,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Missing required fields" }, { status: 400 });
     }
     await addRecurringItem(name, type, amount, day_of_month || 25, notes || null);
+    revalidatePath("/");
+    revalidatePath("/settings");
+    revalidatePath("/funding");
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -24,6 +28,9 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Missing required fields" }, { status: 400 });
     }
     await updateRecurringItem(id, name, type, amount, day_of_month || 25, notes || null);
+    revalidatePath("/");
+    revalidatePath("/settings");
+    revalidatePath("/funding");
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -39,6 +46,9 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Missing id" }, { status: 400 });
     }
     await deleteRecurringItem(Number(id));
+    revalidatePath("/");
+    revalidatePath("/settings");
+    revalidatePath("/funding");
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";

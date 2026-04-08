@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getReceivables, addReceivable, updateReceivableStatus, deleteReceivable } from "@/lib/finance";
 
-export const dynamic = "force-dynamic";
+export const dynamic = "force-dynamic"; // API routes must stay dynamic
 
-// GET /api/receivables
+// GET /api/receivables — returns pending/overdue only (received are hidden)
 export async function GET() {
-  const data = await getReceivables();
+  const all = await getReceivables();
+  const data = all.filter(r => r.status !== "received");
   return NextResponse.json(data);
 }
 
@@ -17,6 +19,8 @@ export async function POST(req: NextRequest) {
     // Update status (mark as received, etc.)
     if (body.action === "update_status") {
       await updateReceivableStatus(body.id, body.status, body.received_date);
+      revalidatePath("/");
+      revalidatePath("/receivables");
       return NextResponse.json({ ok: true });
     }
 
@@ -31,6 +35,8 @@ export async function POST(req: NextRequest) {
       amount: body.amount,
       notes: body.notes,
     });
+    revalidatePath("/");
+    revalidatePath("/receivables");
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -43,5 +49,7 @@ export async function DELETE(req: NextRequest) {
   const id = req.nextUrl.searchParams.get("id");
   if (!id) return NextResponse.json({ ok: false, error: "id required" }, { status: 400 });
   await deleteReceivable(parseInt(id, 10));
+  revalidatePath("/");
+  revalidatePath("/receivables");
   return NextResponse.json({ ok: true });
 }
