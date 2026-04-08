@@ -643,7 +643,9 @@ export async function getFundingDangerMonths(thresholdMultiplier: number = 2): P
   const months = await getFundingMonths();
   const fixedCost = await getMonthlyFixedCostEstimate();
   const dangerLine = fixedCost * thresholdMultiplier;
+  const now = new Date();
+  const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   return months
-    .filter(m => m.closing_balance < dangerLine)
+    .filter(m => m.year_month >= currentYM && m.closing_balance < dangerLine)
     .map(m => ({ year_month: m.year_month, closing_balance: m.closing_balance }));
 }
