@@ -4,46 +4,22 @@ import AlertBanner from "@/components/AlertBanner";
 import RunwayGauge from "@/components/charts/RunwayGauge";
 import ServicePLChart from "@/components/charts/ServicePLChart";
 import CashForecast from "@/components/charts/CashForecast";
-import {
-  getRunwayWithEstimate,
-  getEffectiveRunway,
-  getLatestSnapshot,
-  getServicePLTotal,
-  getExpenseBreakdown,
-  getLastSync,
-  getAllSnapshots,
-  getMonthlyFixedCostEstimate,
-  getYTDSummary,
-  getExpenseTotalsByMonth,
-  getLatestBS,
-  getFundingDangerMonths,
-  getCashForecast,
-} from "@/lib/finance";
+import { getDashboardData } from "@/lib/finance";
 import BSCard from "@/components/BSCard";
 
 export const dynamic = "force-dynamic";
 
 export default async function Dashboard() {
-  const [runway, effRunway, snapshot, servicePL, lastSync, snapshots, ytd, expenseTrend, bsSnapshot, fundingDanger, cashForecast, fixedCostEstimate] = await Promise.all([
-    getRunwayWithEstimate(),
-    getEffectiveRunway(),
-    getLatestSnapshot(),
-    getServicePLTotal(),
-    getLastSync(),
-    getAllSnapshots(),
-    getYTDSummary(),
-    getExpenseTotalsByMonth(),
-    getLatestBS(),
-    getFundingDangerMonths(),
-    getCashForecast(),
-    getMonthlyFixedCostEstimate(),
-  ]);
+  const {
+    snapshot, snapshots, servicePL, lastSync, ytd, expenseTrend,
+    bsSnapshot, runway, effRunway, fixedCostEstimate,
+    fundingDanger, cashForecast, latestExpenses,
+  } = await getDashboardData();
 
   if (!snapshot) {
     return <p className="text-slate-500 mt-8">データがありません。freeeから同期してください。</p>;
   }
 
-  const latestExpenses = await getExpenseBreakdown(String(snapshot.year_month));
   const fixedTotal = latestExpenses.filter(e => e.is_fixed).reduce((s, e) => s + Number(e.amount), 0);
   const variableTotal = latestExpenses.filter(e => !e.is_fixed).reduce((s, e) => s + Number(e.amount), 0);
 

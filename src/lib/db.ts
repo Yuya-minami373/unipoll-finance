@@ -216,6 +216,17 @@ export async function dbRun(sql: string, ...args: unknown[]) {
   };
 }
 
+export async function dbBatch(
+  statements: Array<{ sql: string; args: unknown[] }>
+) {
+  await initDb();
+  const results = await getClient().batch(
+    statements.map((s) => ({ sql: s.sql, args: s.args })),
+    "read"
+  );
+  return results.map((r) => r.rows);
+}
+
 export async function dbTransaction(
   fn: (tx: {
     execute: (sql: string, ...args: unknown[]) => Promise<{ rows: unknown[]; lastInsertRowid: bigint | undefined; changes: number }>;

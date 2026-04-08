@@ -1,4 +1,4 @@
-import { dbAll, dbGet, dbRun } from "./db";
+import { dbAll, dbGet, dbRun, dbBatch } from "./db";
 
 export interface MonthlySnapshot {
   year_month: string;
@@ -648,4 +648,236 @@ export async function getFundingDangerMonths(thresholdMultiplier: number = 2): P
   return months
     .filter(m => m.year_month >= currentYM && m.closing_balance < dangerLine)
     .map(m => ({ year_month: m.year_month, closing_balance: m.closing_balance }));
+}
+
+// ============ Consolidated Dashboard Query ============
+// Fetches all dashboard data in a single batch round-trip to Turso,
+// then computes derived values in-process (no additional DB calls).
+
+export interface DashboardData {
+  snapshot: MonthlySnapshot | null;
+  snapshots: MonthlySnapshot[];
+  servicePL: ServicePL[];
+  lastSync: string | null;
+  ytd: { revenue: number; expense: number; netIncome: number; months: number };
+  expenseTrend: Array<{ year_month: string; fixed: number; variable: number; total: number }>;
+  bsSnapshot: BSSnapshot | null;
+  runway: { months: number; cashTotal: number; monthlyBurn: number };
+  effRunway: {
+    months: number; cashTotal: number; monthlyBurn: number;
+    pendingReceivables: number; monthlyLoanRepayment: number;
+    effectiveCash: number; effectiveBurn: number;
+  };
+  fixedCostEstimate: number;
+  fundingDanger: Array<{ year_month: string; closing_balance: number }>;
+  cashForecast: Array<{ month: string; balance: number; isActual: boolean }>;
+  latestExpenses: ExpenseItem[];
+}
+
+export async function getDashboardData(): Promise<DashboardData> {
+  const threeMonthsLater = new Date();
+  threeMonthsLater.setMonth(threeMonthsLater.getMonth() + 3);
+  const cutoff = threeMonthsLater.toISOString().split("T")[0];
+
+  // Single batch: 11 queries in 1 round-trip
+  const results = await dbBatch([
+    // 0: latest snapshot
+    { sql: "SELECT * FROM monthly_snapshots ORDER BY year_month DESC LIMIT 1", args: [] },
+    // 1: all snapshots
+    { sql: "SELECT * FROM monthly_snapshots ORDER BY year_month ASC", args: [] },
+    // 2: service PL total
+    { sql: "SELECT service_name, SUM(revenue) as revenue, SUM(cost) as cost, SUM(gross_profit) as gross_profit FROM service_pl GROUP BY service_name ORDER BY revenue DESC", args: [] },
+    // 3: last sync
+    { sql: "SELECT synced_at FROM sync_log ORDER BY id DESC LIMIT 1", args: [] },
+    // 4: YTD summary
+    { sql: "SELECT COALESCE(SUM(total_revenue), 0) as revenue, COALESCE(SUM(total_expense), 0) as expense, COUNT(*) as months FROM monthly_snapshots", args: [] },
+    // 5: expense trend by month
+    { sql: "SELECT year_month, SUM(CASE WHEN is_fixed = 1 THEN amount ELSE 0 END) as fixed, SUM(CASE WHEN is_fixed = 0 THEN amount ELSE 0 END) as variable, SUM(amount) as total FROM expense_breakdown GROUP BY year_month ORDER BY year_month ASC", args: [] },
+    // 6: latest BS
+    { sql: "SELECT * FROM bs_snapshots ORDER BY year_month DESC LIMIT 1", args: [] },
+    // 7: fixed cost estimate setting
+    { sql: "SELECT value FROM app_settings WHERE key = 'monthly_fixed_cost_estimate'", args: [] },
+    // 8: pending receivables (3 months)
+    { sql: "SELECT COALESCE(SUM(amount), 0) as total FROM receivables WHERE status = 'pending' AND due_date <= ?", args: [cutoff] },
+    // 9: avg loan repayment
+    { sql: "SELECT AVG(amount) as avg_amount FROM funding_items WHERE section = 'financing_expense'", args: [] },
+    // 10: all funding items + balances (for cash forecast & danger months)
+    { sql: "SELECT * FROM funding_items ORDER BY year_month ASC, section, category, id", args: [] },
+    // 11: funding balances
+    { sql: "SELECT year_month, opening_balance FROM funding_balances", args: [] },
+  ]);
+
+  // Parse results
+  const snapshot = (results[0][0] as unknown as MonthlySnapshot) || null;
+  const snapshots = results[1] as unknown as MonthlySnapshot[];
+  const servicePL = results[2] as unknown as ServicePL[];
+  const lastSyncRow = results[3][0] as unknown as { synced_at: string } | undefined;
+  const lastSync = lastSyncRow?.synced_at || null;
+
+  const ytdRow = results[4][0] as unknown as { revenue: number; expense: number; months: number } | undefined;
+  const ytd = ytdRow && Number(ytdRow.months) > 0
+    ? { revenue: Number(ytdRow.revenue), expense: Number(ytdRow.expense), netIncome: Number(ytdRow.revenue) - Number(ytdRow.expense), months: Number(ytdRow.months) }
+    : { revenue: 0, expense: 0, netIncome: 0, months: 0 };
+
+  const expenseTrend = results[5] as unknown as Array<{ year_month: string; fixed: number; variable: number; total: number }>;
+  const bsSnapshot = (results[6][0] as unknown as BSSnapshot) || null;
+
+  const fixedCostSetting = results[7][0] as unknown as { value: string } | undefined;
+  const fixedCostEstimate = fixedCostSetting ? parseInt(String(fixedCostSetting.value), 10) : 542000;
+
+  const pendingRow = results[8][0] as unknown as { total: number } | undefined;
+  const pendingReceivables = Number(pendingRow?.total || 0);
+
+  const loanRow = results[9][0] as unknown as { avg_amount: number | null } | undefined;
+  const monthlyLoanRepayment = Math.round(Number(loanRow?.avg_amount || 0));
+
+  // Compute runway
+  const cashTotal = snapshot ? Number(snapshot.cash_balance) + Number(snapshot.bank_balance) : 0;
+  const runwayMonths = fixedCostEstimate > 0 ? cashTotal / fixedCostEstimate : 99;
+  const runway = { months: Math.round(runwayMonths * 10) / 10, cashTotal, monthlyBurn: fixedCostEstimate };
+
+  // Compute effective runway
+  const effectiveCash = cashTotal + pendingReceivables;
+  const effectiveBurn = fixedCostEstimate + monthlyLoanRepayment;
+  const effMonths = effectiveBurn > 0 ? effectiveCash / effectiveBurn : 99;
+  const effRunway = {
+    months: Math.round(effMonths * 10) / 10,
+    cashTotal, monthlyBurn: fixedCostEstimate,
+    pendingReceivables, monthlyLoanRepayment, effectiveCash, effectiveBurn,
+  };
+
+  // Build funding months in-process (same logic as getFundingMonths but no DB calls)
+  const allFundingItems = results[10] as unknown as FundingItem[];
+  const allBalances = results[11] as unknown as Array<{ year_month: string; opening_balance: number }>;
+  const fundingMonthsData = buildFundingMonths(allFundingItems, allBalances);
+
+  // Funding danger months
+  const now = new Date();
+  const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const dangerLine = fixedCostEstimate * 2;
+  const fundingDanger = fundingMonthsData
+    .filter(m => m.year_month >= currentYM && m.closing_balance < dangerLine)
+    .map(m => ({ year_month: m.year_month, closing_balance: m.closing_balance }));
+
+  // Cash forecast
+  const cashForecast = buildCashForecast(fundingMonthsData, snapshot, fixedCostEstimate);
+
+  // Expense breakdown for latest month (we already have it from batch if we add one more query,
+  // but let's compute it from the expense trend data or do a single additional query)
+  // Actually, we need per-item breakdown — let's get it from a separate call only if snapshot exists
+  let latestExpenses: ExpenseItem[] = [];
+  if (snapshot) {
+    latestExpenses = await dbAll(
+      "SELECT category, sub_category, amount, is_fixed FROM expense_breakdown WHERE year_month = ? ORDER BY is_fixed DESC, amount DESC",
+      String(snapshot.year_month)
+    ) as unknown as ExpenseItem[];
+  }
+
+  return {
+    snapshot, snapshots, servicePL, lastSync, ytd, expenseTrend,
+    bsSnapshot, runway, effRunway, fixedCostEstimate,
+    fundingDanger, cashForecast, latestExpenses,
+  };
+}
+
+// Pure function: builds funding months from pre-fetched data (no DB calls)
+function buildFundingMonths(allItems: FundingItem[], allBalances: Array<{ year_month: string; opening_balance: number }>): FundingMonth[] {
+  if (allItems.length === 0) return [];
+
+  const itemsByMonth = new Map<string, FundingItem[]>();
+  for (const item of allItems) {
+    const ym = String(item.year_month);
+    if (!itemsByMonth.has(ym)) itemsByMonth.set(ym, []);
+    itemsByMonth.get(ym)!.push(item);
+  }
+
+  const balanceMap = new Map<string, number>();
+  for (const b of allBalances) {
+    balanceMap.set(String(b.year_month), Number(b.opening_balance));
+  }
+
+  const result: FundingMonth[] = [];
+  for (const [year_month, items] of itemsByMonth) {
+    const bySection = (section: string) => items.filter(i => i.section === section);
+    const sectionTotal = (section: string) => bySection(section).reduce((s, i) => s + Number(i.amount), 0);
+
+    const opIncome = sectionTotal("operating_income");
+    const opExpense = sectionTotal("operating_expense");
+    const invIncome = sectionTotal("investing_income");
+    const invExpense = sectionTotal("investing_expense");
+    const finIncome = sectionTotal("financing_income");
+    const finExpense = sectionTotal("financing_expense");
+
+    const opNet = opIncome - opExpense;
+    const invNet = invIncome - invExpense;
+    const finNet = finIncome - finExpense;
+    const totalNet = opNet + invNet + finNet;
+
+    const opening = balanceMap.get(year_month) ?? 0;
+    const closing = opening + totalNet;
+    const isActual = items.some(i => Number(i.is_actual) === 1);
+    const [y, m] = year_month.split("-").map(Number);
+
+    const plannedIncomeTotal = bySection("operating_income").reduce((s, i) => s + Number(i.planned_amount ?? i.amount), 0)
+      + bySection("financing_income").reduce((s, i) => s + Number(i.planned_amount ?? i.amount), 0);
+    const plannedExpenseTotal = bySection("operating_expense").reduce((s, i) => s + Number(i.planned_amount ?? i.amount), 0)
+      + bySection("financing_expense").reduce((s, i) => s + Number(i.planned_amount ?? i.amount), 0);
+
+    result.push({
+      year_month,
+      label: `${y}/${m}`,
+      is_actual: isActual,
+      opening_balance: opening,
+      operating_income: bySection("operating_income"),
+      operating_expense: bySection("operating_expense"),
+      investing_income: bySection("investing_income"),
+      investing_expense: bySection("investing_expense"),
+      financing_income: bySection("financing_income"),
+      financing_expense: bySection("financing_expense"),
+      operating_income_total: opIncome,
+      operating_expense_total: opExpense,
+      operating_net: opNet,
+      investing_net: invNet,
+      financing_net: finNet,
+      total_net: totalNet,
+      closing_balance: closing,
+      planned_income_total: plannedIncomeTotal,
+      planned_expense_total: plannedExpenseTotal,
+      planned_net: plannedIncomeTotal - plannedExpenseTotal,
+    });
+  }
+  return result;
+}
+
+// Pure function: builds cash forecast from pre-fetched funding months
+function buildCashForecast(
+  fundingMonthsData: FundingMonth[],
+  snapshot: MonthlySnapshot | null,
+  fixedCostEstimate: number,
+  forecastMonths: number = 6,
+): Array<{ month: string; balance: number; isActual: boolean }> {
+  if (!snapshot) return [];
+
+  const result: Array<{ month: string; balance: number; isActual: boolean }> = [];
+
+  for (const fm of fundingMonthsData) {
+    result.push({
+      month: fm.year_month.replace(/^\d{4}-0?/, "") + "月",
+      balance: fm.closing_balance,
+      isActual: fm.is_actual,
+    });
+  }
+
+  if (result.length === 0) {
+    const cashTotal = Number(snapshot.cash_balance) + Number(snapshot.bank_balance);
+    const now = new Date();
+    for (let i = 0; i < forecastMonths; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      const label = `${d.getMonth() + 1}月`;
+      const balance = cashTotal - fixedCostEstimate * i;
+      result.push({ month: label, balance, isActual: i === 0 });
+    }
+  }
+
+  return result;
 }
