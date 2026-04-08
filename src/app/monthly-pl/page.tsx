@@ -3,28 +3,30 @@ import { getAllSnapshots, getExpenseTotalsByMonth, getYTDSummary, getBudgets } f
 
 export const dynamic = "force-dynamic";
 
-export default function MonthlyPLPage() {
-  const snapshots = getAllSnapshots();
-  const expenseTrend = getExpenseTotalsByMonth();
-  const ytd = getYTDSummary();
-  const budgets = getBudgets();
+export default async function MonthlyPLPage() {
+  const [snapshots, expenseTrend, ytd, budgets] = await Promise.all([
+    getAllSnapshots(),
+    getExpenseTotalsByMonth(),
+    getYTDSummary(),
+    getBudgets(),
+  ]);
 
   // Build lookup for expense breakdown
   const expenseMap = new Map(expenseTrend.map(e => [e.year_month, e]));
-  const budgetMap = new Map(budgets.map(b => [b.year_month, b]));
+  const budgetMap = new Map(budgets.map(b => [String(b.year_month), b]));
   const hasBudgets = budgets.length > 0;
 
   // Cross-tab data: rows = line items, columns = months
-  const months = snapshots.map(s => s.year_month);
+  const months = snapshots.map(s => String(s.year_month));
   const fmtMonth = (ym: string) => ym.replace(/^\d{4}-/, "").replace(/^0/, "") + "月";
 
   // Row definitions
   const rows = [
-    { key: "revenue", label: "売上", getValue: (ym: string) => snapshots.find(s => s.year_month === ym)?.total_revenue || 0, style: "text-emerald-600 font-medium" },
-    { key: "fixed", label: "固定費", getValue: (ym: string) => expenseMap.get(ym)?.fixed || 0, style: "text-slate-700" },
-    { key: "variable", label: "変動費", getValue: (ym: string) => expenseMap.get(ym)?.variable || 0, style: "text-slate-700" },
-    { key: "expense", label: "費用合計", getValue: (ym: string) => snapshots.find(s => s.year_month === ym)?.total_expense || 0, style: "text-red-500 font-medium" },
-    { key: "net", label: "営業損益", getValue: (ym: string) => snapshots.find(s => s.year_month === ym)?.net_income || 0, style: "font-bold", dynamic: true },
+    { key: "revenue", label: "売上", getValue: (ym: string) => Number(snapshots.find(s => s.year_month === ym)?.total_revenue || 0), style: "text-emerald-600 font-medium" },
+    { key: "fixed", label: "固定費", getValue: (ym: string) => Number(expenseMap.get(ym)?.fixed || 0), style: "text-slate-700" },
+    { key: "variable", label: "変動費", getValue: (ym: string) => Number(expenseMap.get(ym)?.variable || 0), style: "text-slate-700" },
+    { key: "expense", label: "費用合計", getValue: (ym: string) => Number(snapshots.find(s => s.year_month === ym)?.total_expense || 0), style: "text-red-500 font-medium" },
+    { key: "net", label: "営業損益", getValue: (ym: string) => Number(snapshots.find(s => s.year_month === ym)?.net_income || 0), style: "font-bold", dynamic: true },
   ];
 
   // Compute totals per row
@@ -108,11 +110,11 @@ export default function MonthlyPLPage() {
                     {months.map(m => {
                       const b = budgetMap.get(m);
                       if (!b) return <td key={m} className="py-2 text-right text-xs text-slate-300">—</td>;
-                      const net = b.revenue_budget - b.expense_budget;
+                      const net = Number(b.revenue_budget) - Number(b.expense_budget);
                       return <td key={m} className={`py-2 text-right text-xs ${net >= 0 ? "text-blue-600" : "text-red-400"}`}>{yen(net)}</td>;
                     })}
                     <td className="py-2 text-right text-xs text-blue-600 border-l border-slate-200">
-                      {yen(budgets.reduce((s, b) => s + b.revenue_budget - b.expense_budget, 0))}
+                      {yen(budgets.reduce((s, b) => s + Number(b.revenue_budget) - Number(b.expense_budget), 0))}
                     </td>
                   </tr>
                   <tr className="bg-blue-50/30">
@@ -121,15 +123,15 @@ export default function MonthlyPLPage() {
                       const b = budgetMap.get(m);
                       const snap = snapshots.find(s => s.year_month === m);
                       if (!b || !snap) return <td key={m} className="py-2 text-right text-xs text-slate-300">—</td>;
-                      const actualNet = snap.net_income;
-                      const budgetNet = b.revenue_budget - b.expense_budget;
+                      const actualNet = Number(snap.net_income);
+                      const budgetNet = Number(b.revenue_budget) - Number(b.expense_budget);
                       const diff = actualNet - budgetNet;
                       return <td key={m} className={`py-2 text-right text-xs font-medium ${diff >= 0 ? "text-emerald-600" : "text-red-500"}`}>{diff >= 0 ? "+" : ""}{yen(diff)}</td>;
                     })}
                     <td className="py-2 text-right text-xs border-l border-slate-200">
                       {(() => {
                         const totalActual = ytd.netIncome;
-                        const totalBudget = budgets.reduce((s, b) => s + b.revenue_budget - b.expense_budget, 0);
+                        const totalBudget = budgets.reduce((s, b) => s + Number(b.revenue_budget) - Number(b.expense_budget), 0);
                         const diff = totalActual - totalBudget;
                         return <span className={`font-medium ${diff >= 0 ? "text-emerald-600" : "text-red-500"}`}>{diff >= 0 ? "+" : ""}{yen(diff)}</span>;
                       })()}
@@ -143,36 +145,36 @@ export default function MonthlyPLPage() {
 
         {/* Mobile cards */}
         <div className="md:hidden space-y-3">
-          {[...months].reverse().map((m, i) => {
+          {[...months].reverse().map((m) => {
             const snap = snapshots.find(s => s.year_month === m);
             const expense = expenseMap.get(m);
             if (!snap) return null;
             return (
               <div key={m} className="border border-slate-200 rounded-lg p-3">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="font-semibold text-slate-800">{m.replace("-", "年") + "月"}</span>
-                  <span className={`text-sm font-bold ${snap.net_income >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-                    {yen(snap.net_income)}
+                  <span className="font-semibold text-slate-800">{String(m).replace("-", "年") + "月"}</span>
+                  <span className={`text-sm font-bold ${Number(snap.net_income) >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                    {yen(Number(snap.net_income))}
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div className="flex justify-between">
                     <span className="text-slate-500">売上</span>
-                    <span className="text-emerald-600 font-medium">{yen(snap.total_revenue)}</span>
+                    <span className="text-emerald-600 font-medium">{yen(Number(snap.total_revenue))}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">費用</span>
-                    <span className="text-red-500 font-medium">{yen(snap.total_expense)}</span>
+                    <span className="text-red-500 font-medium">{yen(Number(snap.total_expense))}</span>
                   </div>
                   {expense && (
                     <>
                       <div className="flex justify-between">
                         <span className="text-slate-500">固定費</span>
-                        <span className="text-slate-700">{yen(expense.fixed)}</span>
+                        <span className="text-slate-700">{yen(Number(expense.fixed))}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-slate-500">変動費</span>
-                        <span className="text-slate-700">{yen(expense.variable)}</span>
+                        <span className="text-slate-700">{yen(Number(expense.variable))}</span>
                       </div>
                     </>
                   )}

@@ -1,20 +1,21 @@
 import { yen } from "@/lib/format";
 import { getLastSync, getRecurringItems, getMonthlyFixedCostEstimate } from "@/lib/finance";
-import { getDb } from "@/lib/db";
+import { dbAll } from "@/lib/db";
 import FixedCostForm from "@/components/FixedCostForm";
 import RecurringItemsManager from "@/components/RecurringItemsManager";
 import BudgetManager from "@/components/BudgetManager";
 
 export const dynamic = "force-dynamic";
 
-export default function SettingsPage() {
-  const lastSync = getLastSync();
-  const recurring = getRecurringItems();
-  const fixedCostEstimate = getMonthlyFixedCostEstimate();
-  const db = getDb();
-  const syncLogs = db.prepare("SELECT * FROM sync_log ORDER BY id DESC LIMIT 10").all() as Array<{
-    id: number; synced_at: string; source: string; status: string; details: string | null;
-  }>;
+export default async function SettingsPage() {
+  const [lastSync, recurring, fixedCostEstimate, syncLogs] = await Promise.all([
+    getLastSync(),
+    getRecurringItems(),
+    getMonthlyFixedCostEstimate(),
+    dbAll("SELECT * FROM sync_log ORDER BY id DESC LIMIT 10") as Promise<Array<{
+      id: number; synced_at: string; source: string; status: string; details: string | null;
+    }>>,
+  ]);
 
   return (
     <div className="space-y-6 md:space-y-8">
@@ -49,10 +50,10 @@ export default function SettingsPage() {
         <div className="space-y-1">
           {syncLogs.map((log) => (
             <div key={log.id} className="flex items-center gap-2 text-xs text-slate-500">
-              <span className={log.status === "success" ? "text-emerald-500" : "text-red-500"}>●</span>
-              <span>{log.synced_at}</span>
-              <span className="text-slate-400">{log.source}</span>
-              {log.details && <span className="text-slate-400 truncate max-w-[300px]">{log.details}</span>}
+              <span className={String(log.status) === "success" ? "text-emerald-500" : "text-red-500"}>●</span>
+              <span>{String(log.synced_at)}</span>
+              <span className="text-slate-400">{String(log.source)}</span>
+              {log.details && <span className="text-slate-400 truncate max-w-[300px]">{String(log.details)}</span>}
             </div>
           ))}
         </div>

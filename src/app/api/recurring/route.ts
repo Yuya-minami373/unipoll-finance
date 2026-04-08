@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
     if (!name || !type || !amount) {
       return NextResponse.json({ ok: false, error: "Missing required fields" }, { status: 400 });
     }
-    addRecurringItem(name, type, amount, day_of_month || 25, notes || null);
+    await addRecurringItem(name, type, amount, day_of_month || 25, notes || null);
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -23,7 +23,7 @@ export async function PUT(req: NextRequest) {
     if (!id || !name || !type || !amount) {
       return NextResponse.json({ ok: false, error: "Missing required fields" }, { status: 400 });
     }
-    updateRecurringItem(id, name, type, amount, day_of_month || 25, notes || null);
+    await updateRecurringItem(id, name, type, amount, day_of_month || 25, notes || null);
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -38,7 +38,7 @@ export async function DELETE(req: NextRequest) {
     if (!id) {
       return NextResponse.json({ ok: false, error: "Missing id" }, { status: 400 });
     }
-    deleteRecurringItem(Number(id));
+    await deleteRecurringItem(Number(id));
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";

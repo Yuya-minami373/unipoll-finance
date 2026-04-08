@@ -1,4 +1,4 @@
-import { getDb } from "./db";
+import { dbAll, dbGet, dbRun } from "./db";
 
 export interface MonthlySnapshot {
   year_month: string;
@@ -35,98 +35,89 @@ export interface RecurringItem {
 }
 
 // Get latest snapshot
-export function getLatestSnapshot(): MonthlySnapshot | null {
-  const db = getDb();
-  return db.prepare("SELECT * FROM monthly_snapshots ORDER BY year_month DESC LIMIT 1").get() as MonthlySnapshot | null;
+export async function getLatestSnapshot(): Promise<MonthlySnapshot | null> {
+  return await dbGet("SELECT * FROM monthly_snapshots ORDER BY year_month DESC LIMIT 1") as MonthlySnapshot | null;
 }
 
 // Get all snapshots
-export function getAllSnapshots(): MonthlySnapshot[] {
-  const db = getDb();
-  return db.prepare("SELECT * FROM monthly_snapshots ORDER BY year_month ASC").all() as MonthlySnapshot[];
+export async function getAllSnapshots(): Promise<MonthlySnapshot[]> {
+  return await dbAll("SELECT * FROM monthly_snapshots ORDER BY year_month ASC") as unknown as MonthlySnapshot[];
 }
 
 // Get service P/L for a given month
-export function getServicePL(yearMonth: string): ServicePL[] {
-  const db = getDb();
-  return db.prepare("SELECT service_name, revenue, cost, gross_profit FROM service_pl WHERE year_month = ? ORDER BY revenue DESC").all(yearMonth) as ServicePL[];
+export async function getServicePL(yearMonth: string): Promise<ServicePL[]> {
+  return await dbAll("SELECT service_name, revenue, cost, gross_profit FROM service_pl WHERE year_month = ? ORDER BY revenue DESC", yearMonth) as unknown as ServicePL[];
 }
 
 // Get service P/L aggregated across all months
-export function getServicePLTotal(): ServicePL[] {
-  const db = getDb();
-  return db.prepare(`
+export async function getServicePLTotal(): Promise<ServicePL[]> {
+  return await dbAll(`
     SELECT service_name, SUM(revenue) as revenue, SUM(cost) as cost, SUM(gross_profit) as gross_profit
     FROM service_pl GROUP BY service_name ORDER BY revenue DESC
-  `).all() as ServicePL[];
+  `) as unknown as ServicePL[];
 }
 
 // Get expense breakdown (with sub_category for detailed views)
-export function getExpenseBreakdown(yearMonth: string): ExpenseItem[] {
-  const db = getDb();
-  return db.prepare("SELECT category, sub_category, amount, is_fixed FROM expense_breakdown WHERE year_month = ? ORDER BY is_fixed DESC, amount DESC").all(yearMonth) as ExpenseItem[];
+export async function getExpenseBreakdown(yearMonth: string): Promise<ExpenseItem[]> {
+  return await dbAll("SELECT category, sub_category, amount, is_fixed FROM expense_breakdown WHERE year_month = ? ORDER BY is_fixed DESC, amount DESC", yearMonth) as unknown as ExpenseItem[];
 }
 
 // Get monthly fixed costs
-export function getMonthlyFixedCosts(): number {
-  const db = getDb();
-  const latest = db.prepare("SELECT year_month FROM monthly_snapshots ORDER BY year_month DESC LIMIT 1").get() as { year_month: string } | undefined;
+export async function getMonthlyFixedCosts(): Promise<number> {
+  const latest = await dbGet("SELECT year_month FROM monthly_snapshots ORDER BY year_month DESC LIMIT 1") as { year_month: string } | null;
   if (!latest) return 0;
-  const result = db.prepare("SELECT SUM(amount) as total FROM expense_breakdown WHERE year_month = ? AND is_fixed = 1").get(latest.year_month) as { total: number | null };
-  return result.total || 0;
+  const result = await dbGet("SELECT SUM(amount) as total FROM expense_breakdown WHERE year_month = ? AND is_fixed = 1", latest.year_month) as { total: number | null };
+  return result?.total || 0;
 }
 
 // Get recurring items
-export function getRecurringItems(): RecurringItem[] {
-  const db = getDb();
-  return db.prepare("SELECT * FROM recurring_items WHERE is_active = 1 ORDER BY type, name").all() as RecurringItem[];
+export async function getRecurringItems(): Promise<RecurringItem[]> {
+  return await dbAll("SELECT * FROM recurring_items WHERE is_active = 1 ORDER BY type, name") as unknown as RecurringItem[];
 }
 
 // Calculate runway
-export function getRunway(): { months: number; cashTotal: number; monthlyBurn: number } {
-  const snapshot = getLatestSnapshot();
+export async function getRunway(): Promise<{ months: number; cashTotal: number; monthlyBurn: number }> {
+  const snapshot = await getLatestSnapshot();
   if (!snapshot) return { months: 0, cashTotal: 0, monthlyBurn: 0 };
 
   const cashTotal = snapshot.cash_balance + snapshot.bank_balance;
-  const monthlyBurn = getMonthlyFixedCosts();
+  const monthlyBurn = await getMonthlyFixedCosts();
   const months = monthlyBurn > 0 ? cashTotal / monthlyBurn : 99;
 
   return { months: Math.round(months * 10) / 10, cashTotal, monthlyBurn };
 }
 
 // Get app setting
-export function getSetting(key: string): string | null {
-  const db = getDb();
-  const row = db.prepare("SELECT value FROM app_settings WHERE key = ?").get(key) as { value: string } | undefined;
+export async function getSetting(key: string): Promise<string | null> {
+  const row = await dbGet("SELECT value FROM app_settings WHERE key = ?", key) as { value: string } | null;
   return row?.value || null;
 }
 
 // Update app setting
-export function setSetting(key: string, value: string): void {
-  const db = getDb();
-  db.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime('now', 'localtime')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").run(key, value);
+export async function setSetting(key: string, value: string): Promise<void> {
+  await dbRun("INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime('now', 'localtime')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at", key, value);
 }
 
 // Get monthly fixed cost estimate (from settings)
-export function getMonthlyFixedCostEstimate(): number {
-  const val = getSetting("monthly_fixed_cost_estimate");
+export async function getMonthlyFixedCostEstimate(): Promise<number> {
+  const val = await getSetting("monthly_fixed_cost_estimate");
   return val ? parseInt(val, 10) : 542000;
 }
 
 // Calculate runway using estimate (not historical)
-export function getRunwayWithEstimate(): { months: number; cashTotal: number; monthlyBurn: number } {
-  const snapshot = getLatestSnapshot();
+export async function getRunwayWithEstimate(): Promise<{ months: number; cashTotal: number; monthlyBurn: number }> {
+  const snapshot = await getLatestSnapshot();
   if (!snapshot) return { months: 0, cashTotal: 0, monthlyBurn: 0 };
 
   const cashTotal = snapshot.cash_balance + snapshot.bank_balance;
-  const monthlyBurn = getMonthlyFixedCostEstimate();
+  const monthlyBurn = await getMonthlyFixedCostEstimate();
   const months = monthlyBurn > 0 ? cashTotal / monthlyBurn : 99;
 
   return { months: Math.round(months * 10) / 10, cashTotal, monthlyBurn };
 }
 
 // Effective runway: factors in pending receivables and loan repayment
-export function getEffectiveRunway(): {
+export async function getEffectiveRunway(): Promise<{
   months: number;
   cashTotal: number;
   monthlyBurn: number;
@@ -134,28 +125,27 @@ export function getEffectiveRunway(): {
   monthlyLoanRepayment: number;
   effectiveCash: number;
   effectiveBurn: number;
-} {
-  const snapshot = getLatestSnapshot();
+}> {
+  const snapshot = await getLatestSnapshot();
   if (!snapshot) return { months: 0, cashTotal: 0, monthlyBurn: 0, pendingReceivables: 0, monthlyLoanRepayment: 0, effectiveCash: 0, effectiveBurn: 0 };
 
-  const db = getDb();
   const cashTotal = snapshot.cash_balance + snapshot.bank_balance;
-  const monthlyBurn = getMonthlyFixedCostEstimate();
+  const monthlyBurn = await getMonthlyFixedCostEstimate();
 
   // Pending receivables (within next 3 months)
   const threeMonthsLater = new Date();
   threeMonthsLater.setMonth(threeMonthsLater.getMonth() + 3);
   const cutoff = threeMonthsLater.toISOString().split("T")[0];
-  const pendingRow = db.prepare(
-    "SELECT COALESCE(SUM(amount), 0) as total FROM receivables WHERE status = 'pending' AND due_date <= ?"
-  ).get(cutoff) as { total: number };
-  const pendingReceivables = pendingRow.total;
+  const pendingRow = await dbGet(
+    "SELECT COALESCE(SUM(amount), 0) as total FROM receivables WHERE status = 'pending' AND due_date <= ?", cutoff
+  ) as { total: number };
+  const pendingReceivables = Number(pendingRow?.total || 0);
 
   // Monthly loan repayment from funding_items (financing_expense)
-  const loanRow = db.prepare(
+  const loanRow = await dbGet(
     "SELECT AVG(amount) as avg_amount FROM funding_items WHERE section = 'financing_expense'"
-  ).get() as { avg_amount: number | null };
-  const monthlyLoanRepayment = Math.round(loanRow.avg_amount || 0);
+  ) as { avg_amount: number | null };
+  const monthlyLoanRepayment = Math.round(Number(loanRow?.avg_amount || 0));
 
   const effectiveCash = cashTotal + pendingReceivables;
   const effectiveBurn = monthlyBurn + monthlyLoanRepayment;
@@ -173,9 +163,8 @@ export function getEffectiveRunway(): {
 }
 
 // Get service P/L for all months (for gross margin trend)
-export function getServicePLAllMonths(): Array<{ year_month: string; service_name: string; revenue: number; cost: number; gross_profit: number }> {
-  const db = getDb();
-  return db.prepare("SELECT year_month, service_name, revenue, cost, gross_profit FROM service_pl ORDER BY year_month ASC, service_name ASC").all() as Array<{ year_month: string; service_name: string; revenue: number; cost: number; gross_profit: number }>;
+export async function getServicePLAllMonths(): Promise<Array<{ year_month: string; service_name: string; revenue: number; cost: number; gross_profit: number }>> {
+  return await dbAll("SELECT year_month, service_name, revenue, cost, gross_profit FROM service_pl ORDER BY year_month ASC, service_name ASC") as unknown as Array<{ year_month: string; service_name: string; revenue: number; cost: number; gross_profit: number }>;
 }
 
 // Project profitability
@@ -190,45 +179,40 @@ export interface ProjectProfit {
   notes: string | null;
 }
 
-export function getProjectProfitability(): ProjectProfit[] {
-  const db = getDb();
-  return db.prepare("SELECT * FROM project_profitability ORDER BY year_month DESC, municipality ASC").all() as ProjectProfit[];
+export async function getProjectProfitability(): Promise<ProjectProfit[]> {
+  return await dbAll("SELECT * FROM project_profitability ORDER BY year_month DESC, municipality ASC") as unknown as ProjectProfit[];
 }
 
-export function getProjectProfitabilitySummary(): Array<{ municipality: string; service_name: string; total_revenue: number; total_cost: number; total_gross_profit: number }> {
-  const db = getDb();
-  return db.prepare(`
+export async function getProjectProfitabilitySummary(): Promise<Array<{ municipality: string; service_name: string; total_revenue: number; total_cost: number; total_gross_profit: number }>> {
+  return await dbAll(`
     SELECT municipality, service_name, SUM(revenue) as total_revenue, SUM(cost) as total_cost, SUM(gross_profit) as total_gross_profit
     FROM project_profitability GROUP BY municipality, service_name ORDER BY total_revenue DESC
-  `).all() as Array<{ municipality: string; service_name: string; total_revenue: number; total_cost: number; total_gross_profit: number }>;
+  `) as unknown as Array<{ municipality: string; service_name: string; total_revenue: number; total_cost: number; total_gross_profit: number }>;
 }
 
 // Get last sync time
-export function getLastSync(): string | null {
-  const db = getDb();
-  const row = db.prepare("SELECT synced_at FROM sync_log ORDER BY id DESC LIMIT 1").get() as { synced_at: string } | undefined;
+export async function getLastSync(): Promise<string | null> {
+  const row = await dbGet("SELECT synced_at FROM sync_log ORDER BY id DESC LIMIT 1") as { synced_at: string } | null;
   return row?.synced_at || null;
 }
 
 // Get expense totals per month (for trend comparison)
-export function getExpenseTotalsByMonth(): Array<{ year_month: string; fixed: number; variable: number; total: number }> {
-  const db = getDb();
-  const rows = db.prepare(`
+export async function getExpenseTotalsByMonth(): Promise<Array<{ year_month: string; fixed: number; variable: number; total: number }>> {
+  return await dbAll(`
     SELECT year_month,
       SUM(CASE WHEN is_fixed = 1 THEN amount ELSE 0 END) as fixed,
       SUM(CASE WHEN is_fixed = 0 THEN amount ELSE 0 END) as variable,
       SUM(amount) as total
     FROM expense_breakdown
     GROUP BY year_month ORDER BY year_month ASC
-  `).all() as Array<{ year_month: string; fixed: number; variable: number; total: number }>;
-  return rows;
+  `) as unknown as Array<{ year_month: string; fixed: number; variable: number; total: number }>;
 }
 
 // Get YTD summary
-export function getYTDSummary(): { revenue: number; expense: number; netIncome: number; months: number } {
-  const snapshots = getAllSnapshots();
-  const revenue = snapshots.reduce((s, snap) => s + snap.total_revenue, 0);
-  const expense = snapshots.reduce((s, snap) => s + snap.total_expense, 0);
+export async function getYTDSummary(): Promise<{ revenue: number; expense: number; netIncome: number; months: number }> {
+  const snapshots = await getAllSnapshots();
+  const revenue = snapshots.reduce((s, snap) => s + Number(snap.total_revenue), 0);
+  const expense = snapshots.reduce((s, snap) => s + Number(snap.total_expense), 0);
   return {
     revenue,
     expense,
@@ -238,19 +222,16 @@ export function getYTDSummary(): { revenue: number; expense: number; netIncome: 
 }
 
 // CRUD for recurring items
-export function addRecurringItem(name: string, type: "income" | "expense", amount: number, dayOfMonth: number, notes: string | null): void {
-  const db = getDb();
-  db.prepare("INSERT INTO recurring_items (name, type, amount, day_of_month, notes) VALUES (?, ?, ?, ?, ?)").run(name, type, amount, dayOfMonth, notes);
+export async function addRecurringItem(name: string, type: "income" | "expense", amount: number, dayOfMonth: number, notes: string | null): Promise<void> {
+  await dbRun("INSERT INTO recurring_items (name, type, amount, day_of_month, notes) VALUES (?, ?, ?, ?, ?)", name, type, amount, dayOfMonth, notes);
 }
 
-export function updateRecurringItem(id: number, name: string, type: "income" | "expense", amount: number, dayOfMonth: number, notes: string | null): void {
-  const db = getDb();
-  db.prepare("UPDATE recurring_items SET name = ?, type = ?, amount = ?, day_of_month = ?, notes = ?, is_active = 1 WHERE id = ?").run(name, type, amount, dayOfMonth, notes, id);
+export async function updateRecurringItem(id: number, name: string, type: "income" | "expense", amount: number, dayOfMonth: number, notes: string | null): Promise<void> {
+  await dbRun("UPDATE recurring_items SET name = ?, type = ?, amount = ?, day_of_month = ?, notes = ?, is_active = 1 WHERE id = ?", name, type, amount, dayOfMonth, notes, id);
 }
 
-export function deleteRecurringItem(id: number): void {
-  const db = getDb();
-  db.prepare("DELETE FROM recurring_items WHERE id = ?").run(id);
+export async function deleteRecurringItem(id: number): Promise<void> {
+  await dbRun("DELETE FROM recurring_items WHERE id = ?", id);
 }
 
 // ============ Receivables (入金予定) ============
@@ -267,46 +248,40 @@ export interface Receivable {
   created_at: string;
 }
 
-export function getReceivables(): Receivable[] {
-  const db = getDb();
-  return db.prepare("SELECT * FROM receivables ORDER BY due_date ASC").all() as Receivable[];
+export async function getReceivables(): Promise<Receivable[]> {
+  return await dbAll("SELECT * FROM receivables ORDER BY due_date ASC") as unknown as Receivable[];
 }
 
-export function getReceivablesByStatus(status: string): Receivable[] {
-  const db = getDb();
-  return db.prepare("SELECT * FROM receivables WHERE status = ? ORDER BY due_date ASC").all(status) as Receivable[];
+export async function getReceivablesByStatus(status: string): Promise<Receivable[]> {
+  return await dbAll("SELECT * FROM receivables WHERE status = ? ORDER BY due_date ASC", status) as unknown as Receivable[];
 }
 
-export function addReceivable(data: { due_date: string; source: string; service_name?: string; amount: number; notes?: string }): void {
-  const db = getDb();
-  db.prepare("INSERT INTO receivables (due_date, source, service_name, amount, notes) VALUES (?, ?, ?, ?, ?)").run(
+export async function addReceivable(data: { due_date: string; source: string; service_name?: string; amount: number; notes?: string }): Promise<void> {
+  await dbRun("INSERT INTO receivables (due_date, source, service_name, amount, notes) VALUES (?, ?, ?, ?, ?)",
     data.due_date, data.source, data.service_name || null, data.amount, data.notes || null
   );
 }
 
-export function updateReceivableStatus(id: number, status: string, receivedDate?: string): void {
-  const db = getDb();
+export async function updateReceivableStatus(id: number, status: string, receivedDate?: string): Promise<void> {
   if (status === "received") {
-    db.prepare("UPDATE receivables SET status = ?, received_date = ? WHERE id = ?").run(status, receivedDate || new Date().toISOString().split("T")[0], id);
+    await dbRun("UPDATE receivables SET status = ?, received_date = ? WHERE id = ?", status, receivedDate || new Date().toISOString().split("T")[0], id);
   } else {
-    db.prepare("UPDATE receivables SET status = ?, received_date = NULL WHERE id = ?").run(status, id);
+    await dbRun("UPDATE receivables SET status = ?, received_date = NULL WHERE id = ?", status, id);
   }
 }
 
-export function deleteReceivable(id: number): void {
-  const db = getDb();
-  db.prepare("DELETE FROM receivables WHERE id = ?").run(id);
+export async function deleteReceivable(id: number): Promise<void> {
+  await dbRun("DELETE FROM receivables WHERE id = ?", id);
 }
 
 // Monthly receivables summary for funding table
-export function getReceivablesByMonth(): Array<{ month: string; pending: number; received: number }> {
-  const db = getDb();
-  return db.prepare(`
+export async function getReceivablesByMonth(): Promise<Array<{ month: string; pending: number; received: number }>> {
+  return await dbAll(`
     SELECT substr(due_date, 1, 7) as month,
       SUM(CASE WHEN status = 'pending' OR status = 'overdue' THEN amount ELSE 0 END) as pending,
       SUM(CASE WHEN status = 'received' THEN amount ELSE 0 END) as received
     FROM receivables GROUP BY month ORDER BY month ASC
-  `).all() as Array<{ month: string; pending: number; received: number }>;
+  `) as unknown as Array<{ month: string; pending: number; received: number }>;
 }
 
 // Weekly funding forecast (資金繰り表)
@@ -323,16 +298,15 @@ export interface FundingWeek {
   outflowDetails: Array<{ name: string; amount: number }>;
 }
 
-export function getWeeklyFunding(weeks: number = 8): FundingWeek[] {
-  const snapshot = getLatestSnapshot();
+export async function getWeeklyFunding(weeks: number = 8): Promise<FundingWeek[]> {
+  const snapshot = await getLatestSnapshot();
   if (!snapshot) return [];
 
-  const recurring = getRecurringItems();
-  const db = getDb();
-  const receivables = db.prepare("SELECT * FROM receivables WHERE status = 'pending' ORDER BY due_date ASC").all() as Receivable[];
-  const fixedCost = getMonthlyFixedCostEstimate();
+  const recurring = await getRecurringItems();
+  const receivables = await dbAll("SELECT * FROM receivables WHERE status = 'pending' ORDER BY due_date ASC") as unknown as Receivable[];
+  const fixedCost = await getMonthlyFixedCostEstimate();
 
-  let balance = snapshot.cash_balance + snapshot.bank_balance;
+  let balance = Number(snapshot.cash_balance) + Number(snapshot.bank_balance);
   const result: FundingWeek[] = [];
 
   // Start from the beginning of current week (Monday)
@@ -356,8 +330,8 @@ export function getWeeklyFunding(weeks: number = 8): FundingWeek[] {
     let totalInflow = 0;
     for (const r of receivables) {
       if (r.due_date >= wsStr && r.due_date <= weStr) {
-        weekInflows.push({ source: `${r.source}${r.service_name ? ` (${r.service_name})` : ""}`, amount: r.amount });
-        totalInflow += r.amount;
+        weekInflows.push({ source: `${r.source}${r.service_name ? ` (${r.service_name})` : ""}`, amount: Number(r.amount) });
+        totalInflow += Number(r.amount);
       }
     }
 
@@ -366,28 +340,26 @@ export function getWeeklyFunding(weeks: number = 8): FundingWeek[] {
     let totalOutflow = 0;
     for (const r of recurring) {
       if (r.type !== "expense") continue;
-      // Check if the day_of_month falls within this week
-      const monthStart = new Date(weekStart.getFullYear(), weekStart.getMonth(), 1);
       const daysInMonth = new Date(weekStart.getFullYear(), weekStart.getMonth() + 1, 0).getDate();
-      const actualDay = Math.min(r.day_of_month, daysInMonth);
+      const actualDay = Math.min(Number(r.day_of_month), daysInMonth);
       const expenseDate = new Date(weekStart.getFullYear(), weekStart.getMonth(), actualDay);
       const edStr = expenseDate.toISOString().split("T")[0];
 
       if (edStr >= wsStr && edStr <= weStr) {
-        weekOutflows.push({ name: r.name, amount: r.amount });
-        totalOutflow += r.amount;
+        weekOutflows.push({ name: String(r.name), amount: Number(r.amount) });
+        totalOutflow += Number(r.amount);
       }
 
       // Also check if the week spans into next month
       if (weekEnd.getMonth() !== weekStart.getMonth()) {
         const nextMonthDays = new Date(weekEnd.getFullYear(), weekEnd.getMonth() + 1, 0).getDate();
-        const nextActualDay = Math.min(r.day_of_month, nextMonthDays);
+        const nextActualDay = Math.min(Number(r.day_of_month), nextMonthDays);
         const nextExpenseDate = new Date(weekEnd.getFullYear(), weekEnd.getMonth(), nextActualDay);
         const nedStr = nextExpenseDate.toISOString().split("T")[0];
 
         if (nedStr >= wsStr && nedStr <= weStr && nedStr !== edStr) {
-          weekOutflows.push({ name: r.name, amount: r.amount });
-          totalOutflow += r.amount;
+          weekOutflows.push({ name: String(r.name), amount: Number(r.amount) });
+          totalOutflow += Number(r.amount);
         }
       }
     }
@@ -450,7 +422,6 @@ export interface FundingMonth {
   financing_net: number;
   total_net: number;
   closing_balance: number;
-  // 予実対比用: 計画値の集計
   planned_income_total: number;
   planned_expense_total: number;
   planned_net: number;
@@ -499,28 +470,26 @@ export const EXPENSE_CATEGORIES = [
   "支払報酬料",
 ];
 
-export function getFundingMonths(): FundingMonth[] {
-  const db = getDb();
-  // Get all distinct months
-  const months = db.prepare(
+export async function getFundingMonths(): Promise<FundingMonth[]> {
+  const months = await dbAll(
     "SELECT DISTINCT year_month FROM funding_items ORDER BY year_month ASC"
-  ).all() as Array<{ year_month: string }>;
+  ) as unknown as Array<{ year_month: string }>;
 
   if (months.length === 0) return [];
 
   const result: FundingMonth[] = [];
 
   for (const { year_month } of months) {
-    const items = db.prepare(
-      "SELECT * FROM funding_items WHERE year_month = ? ORDER BY section, category, id"
-    ).all(year_month) as FundingItem[];
+    const items = await dbAll(
+      "SELECT * FROM funding_items WHERE year_month = ? ORDER BY section, category, id", year_month
+    ) as unknown as FundingItem[];
 
-    const balanceRow = db.prepare(
-      "SELECT opening_balance FROM funding_balances WHERE year_month = ?"
-    ).get(year_month) as { opening_balance: number } | undefined;
+    const balanceRow = await dbGet(
+      "SELECT opening_balance FROM funding_balances WHERE year_month = ?", year_month
+    ) as { opening_balance: number } | null;
 
     const bySection = (section: string) => items.filter(i => i.section === section);
-    const sectionTotal = (section: string) => bySection(section).reduce((s, i) => s + i.amount, 0);
+    const sectionTotal = (section: string) => bySection(section).reduce((s, i) => s + Number(i.amount), 0);
 
     const opIncome = sectionTotal("operating_income");
     const opExpense = sectionTotal("operating_expense");
@@ -534,17 +503,16 @@ export function getFundingMonths(): FundingMonth[] {
     const finNet = finIncome - finExpense;
     const totalNet = opNet + invNet + finNet;
 
-    const opening = balanceRow?.opening_balance ?? 0;
+    const opening = Number(balanceRow?.opening_balance ?? 0);
     const closing = opening + totalNet;
 
-    const isActual = items.some(i => i.is_actual === 1);
+    const isActual = items.some(i => Number(i.is_actual) === 1);
     const [y, m] = year_month.split("-").map(Number);
 
-    // 予実対比用: planned_amount の集計
-    const plannedIncomeTotal = bySection("operating_income").reduce((s, i) => s + (i.planned_amount ?? i.amount), 0)
-      + bySection("financing_income").reduce((s, i) => s + (i.planned_amount ?? i.amount), 0);
-    const plannedExpenseTotal = bySection("operating_expense").reduce((s, i) => s + (i.planned_amount ?? i.amount), 0)
-      + bySection("financing_expense").reduce((s, i) => s + (i.planned_amount ?? i.amount), 0);
+    const plannedIncomeTotal = bySection("operating_income").reduce((s, i) => s + Number(i.planned_amount ?? i.amount), 0)
+      + bySection("financing_income").reduce((s, i) => s + Number(i.planned_amount ?? i.amount), 0);
+    const plannedExpenseTotal = bySection("operating_expense").reduce((s, i) => s + Number(i.planned_amount ?? i.amount), 0)
+      + bySection("financing_expense").reduce((s, i) => s + Number(i.planned_amount ?? i.amount), 0);
 
     result.push({
       year_month,
@@ -585,9 +553,8 @@ export interface BSSnapshot {
   net_assets: number;
 }
 
-export function getLatestBS(): BSSnapshot | null {
-  const db = getDb();
-  return db.prepare("SELECT * FROM bs_snapshots ORDER BY year_month DESC LIMIT 1").get() as BSSnapshot | null;
+export async function getLatestBS(): Promise<BSSnapshot | null> {
+  return await dbGet("SELECT * FROM bs_snapshots ORDER BY year_month DESC LIMIT 1") as BSSnapshot | null;
 }
 
 // ============ Monthly Budgets (予算策定) ============
@@ -600,39 +567,34 @@ export interface MonthlyBudget {
   notes: string | null;
 }
 
-export function getBudgets(): MonthlyBudget[] {
-  const db = getDb();
-  return db.prepare("SELECT * FROM monthly_budgets ORDER BY year_month ASC").all() as MonthlyBudget[];
+export async function getBudgets(): Promise<MonthlyBudget[]> {
+  return await dbAll("SELECT * FROM monthly_budgets ORDER BY year_month ASC") as unknown as MonthlyBudget[];
 }
 
-export function getBudget(yearMonth: string): MonthlyBudget | null {
-  const db = getDb();
-  return (db.prepare("SELECT * FROM monthly_budgets WHERE year_month = ?").get(yearMonth) as MonthlyBudget) || null;
+export async function getBudget(yearMonth: string): Promise<MonthlyBudget | null> {
+  return await dbGet("SELECT * FROM monthly_budgets WHERE year_month = ?", yearMonth) as MonthlyBudget | null;
 }
 
-export function upsertBudget(yearMonth: string, revenueBudget: number, expenseBudget: number, notes: string | null): void {
-  const db = getDb();
-  db.prepare(`
+export async function upsertBudget(yearMonth: string, revenueBudget: number, expenseBudget: number, notes: string | null): Promise<void> {
+  await dbRun(`
     INSERT INTO monthly_budgets (year_month, revenue_budget, expense_budget, notes)
     VALUES (?, ?, ?, ?)
     ON CONFLICT(year_month) DO UPDATE SET revenue_budget = excluded.revenue_budget, expense_budget = excluded.expense_budget, notes = excluded.notes
-  `).run(yearMonth, revenueBudget, expenseBudget, notes);
+  `, yearMonth, revenueBudget, expenseBudget, notes);
 }
 
-export function deleteBudget(yearMonth: string): void {
-  const db = getDb();
-  db.prepare("DELETE FROM monthly_budgets WHERE year_month = ?").run(yearMonth);
+export async function deleteBudget(yearMonth: string): Promise<void> {
+  await dbRun("DELETE FROM monthly_budgets WHERE year_month = ?", yearMonth);
 }
 
 // Cash flow forecast for dashboard chart
-export function getCashForecast(forecastMonths: number = 6): Array<{ month: string; balance: number; isActual: boolean }> {
-  const fundingMonths = getFundingMonths();
-  const snapshot = getLatestSnapshot();
+export async function getCashForecast(forecastMonths: number = 6): Promise<Array<{ month: string; balance: number; isActual: boolean }>> {
+  const fundingMonths = await getFundingMonths();
+  const snapshot = await getLatestSnapshot();
   if (!snapshot) return [];
 
   const result: Array<{ month: string; balance: number; isActual: boolean }> = [];
 
-  // Add actual months from funding data
   for (const fm of fundingMonths) {
     result.push({
       month: fm.year_month.replace(/^\d{4}-0?/, "") + "月",
@@ -641,10 +603,9 @@ export function getCashForecast(forecastMonths: number = 6): Array<{ month: stri
     });
   }
 
-  // If no funding data, start from current cash
   if (result.length === 0) {
-    const cashTotal = snapshot.cash_balance + snapshot.bank_balance;
-    const monthlyBurn = getMonthlyFixedCostEstimate();
+    const cashTotal = Number(snapshot.cash_balance) + Number(snapshot.bank_balance);
+    const monthlyBurn = await getMonthlyFixedCostEstimate();
     const now = new Date();
 
     for (let i = 0; i < forecastMonths; i++) {
@@ -659,9 +620,9 @@ export function getCashForecast(forecastMonths: number = 6): Array<{ month: stri
 }
 
 // 資金繰りアラート: closing_balance < fixedCost × N ヶ月の月を返す
-export function getFundingDangerMonths(thresholdMultiplier: number = 2): Array<{ year_month: string; closing_balance: number }> {
-  const months = getFundingMonths();
-  const fixedCost = getMonthlyFixedCostEstimate();
+export async function getFundingDangerMonths(thresholdMultiplier: number = 2): Promise<Array<{ year_month: string; closing_balance: number }>> {
+  const months = await getFundingMonths();
+  const fixedCost = await getMonthlyFixedCostEstimate();
   const dangerLine = fixedCost * thresholdMultiplier;
   return months
     .filter(m => m.closing_balance < dangerLine)

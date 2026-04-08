@@ -4,22 +4,22 @@ import ServicePLCombo from "@/components/charts/ServicePLCombo";
 
 export const dynamic = "force-dynamic";
 
-export default function ServicePLPage() {
-  const allMonthsPL = getServicePLAllMonths();
+export default async function ServicePLPage() {
+  const allMonthsPL = await getServicePLAllMonths();
 
   // Build cross-tab: rows = services, columns = months
-  const months = [...new Set(allMonthsPL.map(r => r.year_month))].sort();
-  const services = [...new Set(allMonthsPL.map(r => r.service_name))];
+  const months = [...new Set(allMonthsPL.map(r => String(r.year_month)))].sort();
+  const services = [...new Set(allMonthsPL.map(r => String(r.service_name)))];
   const serviceRevMap = new Map<string, number>();
   for (const r of allMonthsPL) {
-    serviceRevMap.set(r.service_name, (serviceRevMap.get(r.service_name) || 0) + r.revenue);
+    serviceRevMap.set(String(r.service_name), (serviceRevMap.get(String(r.service_name)) || 0) + Number(r.revenue));
   }
   services.sort((a, b) => (serviceRevMap.get(b) || 0) - (serviceRevMap.get(a) || 0));
 
   // Lookup map
   const lookup = new Map<string, { revenue: number; cost: number; gross_profit: number }>();
   for (const r of allMonthsPL) {
-    lookup.set(`${r.service_name}|${r.year_month}`, r);
+    lookup.set(`${r.service_name}|${r.year_month}`, { revenue: Number(r.revenue), cost: Number(r.cost), gross_profit: Number(r.gross_profit) });
   }
 
   // Totals

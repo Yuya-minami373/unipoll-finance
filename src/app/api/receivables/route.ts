@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 // GET /api/receivables
 export async function GET() {
-  const data = getReceivables();
+  const data = await getReceivables();
   return NextResponse.json(data);
 }
 
@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
 
     // Update status (mark as received, etc.)
     if (body.action === "update_status") {
-      updateReceivableStatus(body.id, body.status, body.received_date);
+      await updateReceivableStatus(body.id, body.status, body.received_date);
       return NextResponse.json({ ok: true });
     }
 
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     if (!body.due_date || !body.source || !body.amount) {
       return NextResponse.json({ ok: false, error: "due_date, source, amount are required" }, { status: 400 });
     }
-    addReceivable({
+    await addReceivable({
       due_date: body.due_date,
       source: body.source,
       service_name: body.service_name,
@@ -42,6 +42,6 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const id = req.nextUrl.searchParams.get("id");
   if (!id) return NextResponse.json({ ok: false, error: "id required" }, { status: 400 });
-  deleteReceivable(parseInt(id, 10));
+  await deleteReceivable(parseInt(id, 10));
   return NextResponse.json({ ok: true });
 }

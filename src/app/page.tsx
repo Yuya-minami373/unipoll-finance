@@ -23,35 +23,37 @@ import BSCard from "@/components/BSCard";
 
 export const dynamic = "force-dynamic";
 
-export default function Dashboard() {
-  const runway = getRunwayWithEstimate();
-  const effRunway = getEffectiveRunway();
-  const snapshot = getLatestSnapshot();
-  const servicePL = getServicePLTotal();
-  const lastSync = getLastSync();
-  const snapshots = getAllSnapshots();
-  const ytd = getYTDSummary();
-  const expenseTrend = getExpenseTotalsByMonth();
-  const bsSnapshot = getLatestBS();
-  const fundingDanger = getFundingDangerMonths();
-  const cashForecast = getCashForecast();
+export default async function Dashboard() {
+  const [runway, effRunway, snapshot, servicePL, lastSync, snapshots, ytd, expenseTrend, bsSnapshot, fundingDanger, cashForecast] = await Promise.all([
+    getRunwayWithEstimate(),
+    getEffectiveRunway(),
+    getLatestSnapshot(),
+    getServicePLTotal(),
+    getLastSync(),
+    getAllSnapshots(),
+    getYTDSummary(),
+    getExpenseTotalsByMonth(),
+    getLatestBS(),
+    getFundingDangerMonths(),
+    getCashForecast(),
+  ]);
 
   if (!snapshot) {
     return <p className="text-slate-500 mt-8">データがありません。freeeから同期してください。</p>;
   }
 
-  const latestExpenses = getExpenseBreakdown(snapshot.year_month);
-  const fixedTotal = latestExpenses.filter(e => e.is_fixed).reduce((s, e) => s + e.amount, 0);
-  const variableTotal = latestExpenses.filter(e => !e.is_fixed).reduce((s, e) => s + e.amount, 0);
-  const fixedCostEstimate = getMonthlyFixedCostEstimate();
+  const latestExpenses = await getExpenseBreakdown(snapshot.year_month);
+  const fixedTotal = latestExpenses.filter(e => e.is_fixed).reduce((s, e) => s + Number(e.amount), 0);
+  const variableTotal = latestExpenses.filter(e => !e.is_fixed).reduce((s, e) => s + Number(e.amount), 0);
+  const fixedCostEstimate = await getMonthlyFixedCostEstimate();
 
   // Monthly revenue trend
-  const totalRevenue = snapshots.reduce((s, snap) => s + snap.total_revenue, 0);
+  const totalRevenue = snapshots.reduce((s, snap) => s + Number(snap.total_revenue), 0);
   const avgRevenue = Math.round(totalRevenue / snapshots.length);
 
   // Expense month-over-month change
   const expensePctChange = expenseTrend.length >= 2
-    ? pctChange(expenseTrend[expenseTrend.length - 1].total, expenseTrend[expenseTrend.length - 2].total)
+    ? pctChange(Number(expenseTrend[expenseTrend.length - 1].total), Number(expenseTrend[expenseTrend.length - 2].total))
     : null;
 
   return (
@@ -60,7 +62,7 @@ export default function Dashboard() {
       <AlertBanner
         runwayMonths={runway.months}
         expensePctChange={expensePctChange}
-        netIncome={snapshot.net_income}
+        netIncome={Number(snapshot.net_income)}
         fundingDangerMonths={fundingDanger}
       />
 
@@ -69,7 +71,7 @@ export default function Dashboard() {
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-slate-900">ダッシュボード</h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            {snapshot.year_month.replace("-", "年")}月時点
+            {String(snapshot.year_month).replace("-", "年")}月時点
           </p>
         </div>
         <div className="text-right">
@@ -83,7 +85,7 @@ export default function Dashboard() {
         <KPICard
           title="現預金残高"
           value={yen(runway.cashTotal)}
-          subtitle={`現金 ${yen(snapshot.cash_balance)} + 銀行 ${yen(snapshot.bank_balance)}`}
+          subtitle={`現金 ${yen(Number(snapshot.cash_balance))} + 銀行 ${yen(Number(snapshot.bank_balance))}`}
           gradient="gradient-cash"
         />
         <KPICard
@@ -100,7 +102,7 @@ export default function Dashboard() {
         />
         <KPICard
           title="売掛金"
-          value={yen(snapshot.accounts_receivable)}
+          value={yen(Number(snapshot.accounts_receivable))}
           subtitle="入金予定額"
           gradient="gradient-cash"
         />

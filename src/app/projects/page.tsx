@@ -5,9 +5,11 @@ import ProjectTable from "@/components/ProjectTable";
 
 export const dynamic = "force-dynamic";
 
-export default function ProjectsPage() {
-  const projects = getProjectProfitability();
-  const summary = getProjectProfitabilitySummary();
+export default async function ProjectsPage() {
+  const [projects, summary] = await Promise.all([
+    getProjectProfitability(),
+    getProjectProfitabilitySummary(),
+  ]);
 
   return (
     <div className="space-y-6 md:space-y-8">
@@ -37,15 +39,15 @@ export default function ProjectsPage() {
               <tbody>
                 {summary.map((s, i) => (
                   <tr key={i} className="border-b border-slate-100">
-                    <td className="py-2.5 font-medium text-slate-800">{s.municipality}</td>
-                    <td className="py-2.5 text-slate-700">{s.service_name}</td>
-                    <td className="py-2.5 text-right text-slate-700">{yen(s.total_revenue)}</td>
-                    <td className="py-2.5 text-right text-slate-700">{yen(s.total_cost)}</td>
-                    <td className={`py-2.5 text-right font-medium ${s.total_gross_profit >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-                      {yen(s.total_gross_profit)}
+                    <td className="py-2.5 font-medium text-slate-800">{String(s.municipality)}</td>
+                    <td className="py-2.5 text-slate-700">{String(s.service_name)}</td>
+                    <td className="py-2.5 text-right text-slate-700">{yen(Number(s.total_revenue))}</td>
+                    <td className="py-2.5 text-right text-slate-700">{yen(Number(s.total_cost))}</td>
+                    <td className={`py-2.5 text-right font-medium ${Number(s.total_gross_profit) >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                      {yen(Number(s.total_gross_profit))}
                     </td>
                     <td className="py-2.5 text-right text-slate-500">
-                      {s.total_revenue > 0 ? `${Math.round((s.total_gross_profit / s.total_revenue) * 100)}%` : "-"}
+                      {Number(s.total_revenue) > 0 ? `${Math.round((Number(s.total_gross_profit) / Number(s.total_revenue)) * 100)}%` : "-"}
                     </td>
                   </tr>
                 ))}
@@ -54,9 +56,9 @@ export default function ProjectsPage() {
                 <tfoot>
                   <tr className="border-t-2 border-slate-300">
                     <td className="py-2.5 font-bold text-slate-900" colSpan={2}>合計</td>
-                    <td className="py-2.5 text-right font-bold text-slate-900">{yen(summary.reduce((s, r) => s + r.total_revenue, 0))}</td>
-                    <td className="py-2.5 text-right font-bold text-slate-900">{yen(summary.reduce((s, r) => s + r.total_cost, 0))}</td>
-                    <td className="py-2.5 text-right font-bold text-slate-900">{yen(summary.reduce((s, r) => s + r.total_gross_profit, 0))}</td>
+                    <td className="py-2.5 text-right font-bold text-slate-900">{yen(summary.reduce((s, r) => s + Number(r.total_revenue), 0))}</td>
+                    <td className="py-2.5 text-right font-bold text-slate-900">{yen(summary.reduce((s, r) => s + Number(r.total_cost), 0))}</td>
+                    <td className="py-2.5 text-right font-bold text-slate-900">{yen(summary.reduce((s, r) => s + Number(r.total_gross_profit), 0))}</td>
                     <td></td>
                   </tr>
                 </tfoot>
@@ -69,23 +71,23 @@ export default function ProjectsPage() {
             {summary.map((s, i) => (
               <div key={i} className="border border-slate-200 rounded-lg p-3">
                 <div className="flex justify-between items-center mb-1">
-                  <span className="font-medium text-slate-800 text-sm">{s.municipality} / {s.service_name}</span>
+                  <span className="font-medium text-slate-800 text-sm">{String(s.municipality)} / {String(s.service_name)}</span>
                   <span className="text-xs text-slate-500">
-                    {s.total_revenue > 0 ? `${Math.round((s.total_gross_profit / s.total_revenue) * 100)}%` : "-"}
+                    {Number(s.total_revenue) > 0 ? `${Math.round((Number(s.total_gross_profit) / Number(s.total_revenue)) * 100)}%` : "-"}
                   </span>
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-xs">
                   <div>
                     <span className="text-slate-500">売上</span>
-                    <p className="font-medium">{yen(s.total_revenue)}</p>
+                    <p className="font-medium">{yen(Number(s.total_revenue))}</p>
                   </div>
                   <div>
                     <span className="text-slate-500">原価</span>
-                    <p className="font-medium">{yen(s.total_cost)}</p>
+                    <p className="font-medium">{yen(Number(s.total_cost))}</p>
                   </div>
                   <div>
                     <span className="text-slate-500">粗利</span>
-                    <p className={`font-medium ${s.total_gross_profit >= 0 ? "text-emerald-600" : "text-red-500"}`}>{yen(s.total_gross_profit)}</p>
+                    <p className={`font-medium ${Number(s.total_gross_profit) >= 0 ? "text-emerald-600" : "text-red-500"}`}>{yen(Number(s.total_gross_profit))}</p>
                   </div>
                 </div>
               </div>
