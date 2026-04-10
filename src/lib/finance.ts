@@ -32,6 +32,7 @@ export interface RecurringItem {
   day_of_month: number;
   is_active: number;
   notes: string | null;
+  scenario: "base" | "upside" | "downside";
 }
 
 // Get latest snapshot
@@ -70,9 +71,35 @@ export async function getMonthlyFixedCosts(): Promise<number> {
   return result?.total || 0;
 }
 
-// Get recurring items
+// Get recurring items (base scenario by default for backwards compat)
 export async function getRecurringItems(): Promise<RecurringItem[]> {
-  return await dbAll("SELECT * FROM recurring_items WHERE is_active = 1 ORDER BY type, name") as unknown as RecurringItem[];
+  return await dbAll("SELECT * FROM recurring_items WHERE is_active = 1 AND scenario = 'base' ORDER BY type, name") as unknown as RecurringItem[];
+}
+
+// Get all recurring items across all scenarios
+export async function getAllRecurringItems(): Promise<RecurringItem[]> {
+  return await dbAll("SELECT * FROM recurring_items WHERE is_active = 1 ORDER BY scenario, type, name") as unknown as RecurringItem[];
+}
+
+// Build scenario-specific recurring items
+// Base: all base items
+// Upside: base items + upside items
+// Downside: base items with overrides from downside (matched by name+type)
+export function buildScenarioItems(allItems: RecurringItem[], scenario: "base" | "upside" | "downside"): RecurringItem[] {
+  const baseItems = allItems.filter(i => i.scenario === "base");
+  if (scenario === "base") return baseItems;
+
+  const scenarioItems = allItems.filter(i => i.scenario === scenario);
+
+  if (scenario === "upside") {
+    // Upside = base + upside additions
+    return [...baseItems, ...scenarioItems];
+  }
+
+  // Downside = base with overrides from downside (matched by name+type)
+  const overrideKeys = new Set(scenarioItems.map(i => `${i.name}|${i.type}`));
+  const filtered = baseItems.filter(i => !overrideKeys.has(`${i.name}|${i.type}`));
+  return [...filtered, ...scenarioItems];
 }
 
 // Calculate runway
@@ -230,12 +257,12 @@ export async function getYTDSummary(): Promise<{ revenue: number; expense: numbe
 }
 
 // CRUD for recurring items
-export async function addRecurringItem(name: string, type: "income" | "expense", amount: number, dayOfMonth: number, notes: string | null): Promise<void> {
-  await dbRun("INSERT INTO recurring_items (name, type, amount, day_of_month, notes) VALUES (?, ?, ?, ?, ?)", name, type, amount, dayOfMonth, notes);
+export async function addRecurringItem(name: string, type: "income" | "expense", amount: number, dayOfMonth: number, notes: string | null, scenario: string = "base"): Promise<void> {
+  await dbRun("INSERT INTO recurring_items (name, type, amount, day_of_month, notes, scenario) VALUES (?, ?, ?, ?, ?, ?)", name, type, amount, dayOfMonth, notes, scenario);
 }
 
-export async function updateRecurringItem(id: number, name: string, type: "income" | "expense", amount: number, dayOfMonth: number, notes: string | null): Promise<void> {
-  await dbRun("UPDATE recurring_items SET name = ?, type = ?, amount = ?, day_of_month = ?, notes = ?, is_active = 1 WHERE id = ?", name, type, amount, dayOfMonth, notes, id);
+export async function updateRecurringItem(id: number, name: string, type: "income" | "expense", amount: number, dayOfMonth: number, notes: string | null, scenario: string = "base"): Promise<void> {
+  await dbRun("UPDATE recurring_items SET name = ?, type = ?, amount = ?, day_of_month = ?, notes = ?, scenario = ?, is_active = 1 WHERE id = ?", name, type, amount, dayOfMonth, notes, scenario, id);
 }
 
 export async function deleteRecurringItem(id: number): Promise<void> {
@@ -671,6 +698,11 @@ export interface DashboardData {
   fixedCostEstimate: number;
   fundingDanger: Array<{ year_month: string; closing_balance: number }>;
   cashForecast: Array<{ month: string; balance: number; isActual: boolean }>;
+  cashForecastScenarios: {
+    base: Array<{ month: string; balance: number }>;
+    upside: Array<{ month: string; balance: number }>;
+    downside: Array<{ month: string; balance: number }>;
+  };
   latestExpenses: ExpenseItem[];
 }
 
@@ -705,6 +737,8 @@ export async function getDashboardData(): Promise<DashboardData> {
     { sql: "SELECT * FROM funding_items ORDER BY year_month ASC, section, category, id", args: [] },
     // 11: funding balances
     { sql: "SELECT year_month, opening_balance FROM funding_balances", args: [] },
+    // 12: all recurring items (for scenario CF forecast)
+    { sql: "SELECT * FROM recurring_items WHERE is_active = 1 ORDER BY scenario, type, name", args: [] },
   ]);
 
   // Parse results
@@ -773,10 +807,14 @@ export async function getDashboardData(): Promise<DashboardData> {
     ) as unknown as ExpenseItem[];
   }
 
+  // Scenario-based CF forecast from recurring items
+  const allRecurring = results[12] as unknown as RecurringItem[];
+  const cashForecastScenarios = buildScenarioCashForecasts(allRecurring, cashTotal, 6);
+
   return {
     snapshot, snapshots, servicePL, lastSync, ytd, expenseTrend,
     bsSnapshot, runway, effRunway, fixedCostEstimate,
-    fundingDanger, cashForecast, latestExpenses,
+    fundingDanger, cashForecast, cashForecastScenarios, latestExpenses,
   };
 }
 
@@ -944,6 +982,36 @@ export interface LTVSummary {
   totalLTV5y: number;
   gpConcentration: number;
   customers: CustomerLTV[];
+}
+
+// Build scenario-based cash forecasts from recurring items
+function buildScenarioCashForecasts(
+  allRecurring: RecurringItem[],
+  startingCash: number,
+  months: number,
+): { base: Array<{ month: string; balance: number }>; upside: Array<{ month: string; balance: number }>; downside: Array<{ month: string; balance: number }> } {
+  const scenarios = ["base", "upside", "downside"] as const;
+  const result: Record<string, Array<{ month: string; balance: number }>> = {};
+
+  for (const scenario of scenarios) {
+    const items = buildScenarioItems(allRecurring, scenario);
+    const monthlyIncome = items.filter(i => i.type === "income").reduce((s, i) => s + Number(i.amount), 0);
+    const monthlyExpense = items.filter(i => i.type === "expense").reduce((s, i) => s + Number(i.amount), 0);
+    const monthlyNet = monthlyIncome - monthlyExpense;
+
+    const forecast: Array<{ month: string; balance: number }> = [];
+    let balance = startingCash;
+    const now = new Date();
+
+    for (let i = 0; i < months; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      balance = startingCash + monthlyNet * (i + 1);
+      forecast.push({ month: `${d.getMonth() + 1}月`, balance });
+    }
+    result[scenario] = forecast;
+  }
+
+  return result as { base: Array<{ month: string; balance: number }>; upside: Array<{ month: string; balance: number }>; downside: Array<{ month: string; balance: number }> };
 }
 
 export async function getLTVSummary(): Promise<LTVSummary> {

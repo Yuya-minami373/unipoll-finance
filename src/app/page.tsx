@@ -3,7 +3,7 @@ import KPICard from "@/components/KPICard";
 import AlertBanner from "@/components/AlertBanner";
 import RunwayGauge from "@/components/charts/RunwayGauge";
 import ServicePLChart from "@/components/charts/ServicePLChart";
-import CashForecast from "@/components/charts/CashForecast";
+import CashForecast, { CashForecastScenario } from "@/components/charts/CashForecast";
 import LTVDonut from "@/components/charts/LTVDonut";
 import { getDashboardData, getLTVSummary } from "@/lib/finance";
 import BSCard from "@/components/BSCard";
@@ -18,7 +18,7 @@ export default async function Dashboard() {
   const {
     snapshot, snapshots, servicePL, lastSync, ytd, expenseTrend,
     bsSnapshot, runway, effRunway, fixedCostEstimate,
-    fundingDanger, cashForecast, latestExpenses,
+    fundingDanger, cashForecast, cashForecastScenarios, latestExpenses,
   } = dashData;
 
   const ltvDonutData = ltvSummary.customers
@@ -173,6 +173,21 @@ export default async function Dashboard() {
             </div>
           </div>
           <CashForecast data={cashForecast} dangerLine={fixedCostEstimate * 2} />
+        </div>
+      )}
+
+      {/* Scenario Cash Flow Forecast */}
+      {cashForecastScenarios.base.length > 0 && (
+        <div className="card p-4 md:p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-slate-600">CF予測（シナリオ別）</h2>
+            <div className="flex items-center gap-3 text-[10px] text-slate-400">
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />Base</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />Upside</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500 inline-block" />Downside</span>
+            </div>
+          </div>
+          <CashForecastScenario scenarios={cashForecastScenarios} dangerLine={fixedCostEstimate * 2} />
         </div>
       )}
 

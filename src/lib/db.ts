@@ -3,6 +3,15 @@ import { createClient, type Client } from "@libsql/client";
 let client: Client | null = null;
 let initialized = false;
 
+// Add columns to existing tables (safe to run multiple times)
+async function runMigrations(c: Client) {
+  try {
+    await c.execute("SELECT scenario FROM recurring_items LIMIT 0");
+  } catch {
+    await c.execute("ALTER TABLE recurring_items ADD COLUMN scenario TEXT NOT NULL DEFAULT 'base'");
+  }
+}
+
 function getClient(): Client {
   if (!client) {
     client = createClient({
@@ -17,10 +26,12 @@ async function initDb() {
   if (initialized) return;
   const c = getClient();
 
-  // Quick check: if all tables exist, skip DDL
+  // Quick check: if all tables exist, skip DDL but run migrations
   try {
     await c.execute("SELECT 1 FROM monthly_snapshots LIMIT 0");
     await c.execute("SELECT 1 FROM customer_ltv LIMIT 0");
+    // Run column migrations for existing DBs
+    await runMigrations(c);
     initialized = true;
     return;
   } catch {
@@ -79,7 +90,8 @@ async function initDb() {
           amount INTEGER NOT NULL,
           day_of_month INTEGER NOT NULL DEFAULT 25,
           is_active INTEGER NOT NULL DEFAULT 1,
-          notes TEXT
+          notes TEXT,
+          scenario TEXT NOT NULL DEFAULT 'base'
         )`,
         args: [],
       },
