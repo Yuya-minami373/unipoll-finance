@@ -17,13 +17,14 @@ async function initDb() {
   if (initialized) return;
   const c = getClient();
 
-  // Quick check: if monthly_snapshots exists, skip DDL (tables already created)
+  // Quick check: if all tables exist, skip DDL
   try {
     await c.execute("SELECT 1 FROM monthly_snapshots LIMIT 0");
+    await c.execute("SELECT 1 FROM customer_ltv LIMIT 0");
     initialized = true;
     return;
   } catch {
-    // Table doesn't exist yet, run full DDL below
+    // Some table doesn't exist yet, run full DDL below
   }
 
   await c.batch(
