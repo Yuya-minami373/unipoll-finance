@@ -189,6 +189,24 @@ async function initDb() {
         )`,
         args: [],
       },
+      // Customer LTV
+      {
+        sql: `CREATE TABLE IF NOT EXISTS customer_ltv (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          customer_name TEXT NOT NULL,
+          service_name TEXT NOT NULL,
+          contract_type TEXT NOT NULL CHECK(contract_type IN ('recurring', 'one_time', 'variable')),
+          monthly_amount INTEGER NOT NULL DEFAULT 0,
+          annual_amount INTEGER NOT NULL DEFAULT 0,
+          start_date TEXT,
+          ltv_3y INTEGER NOT NULL DEFAULT 0,
+          ltv_5y INTEGER NOT NULL DEFAULT 0,
+          is_active INTEGER NOT NULL DEFAULT 1,
+          notes TEXT,
+          UNIQUE(customer_name, service_name)
+        )`,
+        args: [],
+      },
     ],
     "write"
   );

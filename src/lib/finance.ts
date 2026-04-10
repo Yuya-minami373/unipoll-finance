@@ -881,3 +881,79 @@ function buildCashForecast(
 
   return result;
 }
+
+// ============ Customer LTV ============
+
+export interface CustomerLTV {
+  id: number;
+  customer_name: string;
+  service_name: string;
+  contract_type: "recurring" | "one_time" | "variable";
+  monthly_amount: number;
+  annual_amount: number;
+  start_date: string | null;
+  ltv_3y: number;
+  ltv_5y: number;
+  is_active: number;
+  notes: string | null;
+}
+
+export async function getCustomerLTVs(): Promise<CustomerLTV[]> {
+  return await dbAll("SELECT * FROM customer_ltv WHERE is_active = 1 ORDER BY ltv_3y DESC") as unknown as CustomerLTV[];
+}
+
+export async function getAllCustomerLTVs(): Promise<CustomerLTV[]> {
+  return await dbAll("SELECT * FROM customer_ltv ORDER BY ltv_3y DESC") as unknown as CustomerLTV[];
+}
+
+export async function addCustomerLTV(data: Omit<CustomerLTV, "id">): Promise<void> {
+  await dbRun(`
+    INSERT INTO customer_ltv (customer_name, service_name, contract_type, monthly_amount, annual_amount, start_date, ltv_3y, ltv_5y, is_active, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(customer_name, service_name) DO UPDATE SET
+      contract_type = excluded.contract_type,
+      monthly_amount = excluded.monthly_amount,
+      annual_amount = excluded.annual_amount,
+      start_date = excluded.start_date,
+      ltv_3y = excluded.ltv_3y,
+      ltv_5y = excluded.ltv_5y,
+      is_active = excluded.is_active,
+      notes = excluded.notes
+  `, data.customer_name, data.service_name, data.contract_type, data.monthly_amount, data.annual_amount, data.start_date, data.ltv_3y, data.ltv_5y, data.is_active, data.notes);
+}
+
+export async function updateCustomerLTV(id: number, data: Partial<CustomerLTV>): Promise<void> {
+  const fields: string[] = [];
+  const values: unknown[] = [];
+  for (const [key, val] of Object.entries(data)) {
+    if (key === "id") continue;
+    fields.push(`${key} = ?`);
+    values.push(val);
+  }
+  values.push(id);
+  await dbRun(`UPDATE customer_ltv SET ${fields.join(", ")} WHERE id = ?`, ...values);
+}
+
+export async function deleteCustomerLTV(id: number): Promise<void> {
+  await dbRun("DELETE FROM customer_ltv WHERE id = ?", id);
+}
+
+export interface LTVSummary {
+  totalMRR: number;
+  totalLTV3y: number;
+  totalLTV5y: number;
+  gpConcentration: number;
+  customers: CustomerLTV[];
+}
+
+export async function getLTVSummary(): Promise<LTVSummary> {
+  const customers = await getCustomerLTVs();
+  const totalMRR = customers.reduce((s, c) => s + Number(c.monthly_amount), 0);
+  const totalLTV3y = customers.reduce((s, c) => s + Number(c.ltv_3y), 0);
+  const totalLTV5y = customers.reduce((s, c) => s + Number(c.ltv_5y), 0);
+  const gpLTV3y = customers
+    .filter(c => c.customer_name === "Green Plus")
+    .reduce((s, c) => s + Number(c.ltv_3y), 0);
+  const gpConcentration = totalLTV3y > 0 ? Math.round(gpLTV3y / totalLTV3y * 100) : 0;
+  return { totalMRR, totalLTV3y, totalLTV5y, gpConcentration, customers };
+}

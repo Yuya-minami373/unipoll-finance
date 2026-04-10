@@ -4,17 +4,26 @@ import AlertBanner from "@/components/AlertBanner";
 import RunwayGauge from "@/components/charts/RunwayGauge";
 import ServicePLChart from "@/components/charts/ServicePLChart";
 import CashForecast from "@/components/charts/CashForecast";
-import { getDashboardData } from "@/lib/finance";
+import LTVDonut from "@/components/charts/LTVDonut";
+import { getDashboardData, getLTVSummary } from "@/lib/finance";
 import BSCard from "@/components/BSCard";
 
 export const dynamic = "force-dynamic";
 
 export default async function Dashboard() {
+  const [dashData, ltvSummary] = await Promise.all([
+    getDashboardData(),
+    getLTVSummary(),
+  ]);
   const {
     snapshot, snapshots, servicePL, lastSync, ytd, expenseTrend,
     bsSnapshot, runway, effRunway, fixedCostEstimate,
     fundingDanger, cashForecast, latestExpenses,
-  } = await getDashboardData();
+  } = dashData;
+
+  const ltvDonutData = ltvSummary.customers
+    .filter((c) => c.ltv_3y > 0)
+    .map((c) => ({ name: `${c.customer_name} (${c.service_name})`, value: c.ltv_3y }));
 
   if (!snapshot) {
     return <p className="text-slate-500 mt-8">データがありません。freeeから同期してください。</p>;
@@ -167,13 +176,35 @@ export default async function Dashboard() {
         </div>
       )}
 
-      {/* Service P/L */}
-      <div className="card p-4 md:p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold text-slate-600">サービス別売上（累計）</h2>
-          <a href="/service-pl" className="text-xs text-blue-500 hover:underline">詳細 →</a>
+      {/* Service P/L + LTV side by side */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+        <div className="card p-4 md:p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-slate-600">サービス別売上（累計）</h2>
+            <a href="/service-pl" className="text-xs text-blue-500 hover:underline">詳細 →</a>
+          </div>
+          <ServicePLChart data={servicePL} />
         </div>
-        <ServicePLChart data={servicePL} />
+
+        <div className="card p-4 md:p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-slate-600">LTV集中度（3年）</h2>
+            <a href="/ltv" className="text-xs text-blue-500 hover:underline">詳細 →</a>
+          </div>
+          {ltvDonutData.length > 0 ? (
+            <>
+              <LTVDonut data={ltvDonutData} />
+              <div className="mt-2 flex items-center justify-between text-xs">
+                <span className="text-slate-500">GP集中度</span>
+                <span className={`font-bold ${ltvSummary.gpConcentration > 70 ? "text-red-500" : "text-emerald-600"}`}>
+                  {ltvSummary.gpConcentration}%
+                </span>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-slate-400 py-8 text-center">LTVデータなし</p>
+          )}
+        </div>
       </div>
     </div>
   );

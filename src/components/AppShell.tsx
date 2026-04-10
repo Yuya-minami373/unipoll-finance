@@ -11,6 +11,7 @@ const nav = [
   { href: "/receivables", label: "入金予定", icon: "🧾" },
   { href: "/funding", label: "資金繰り表", icon: "💰" },
   { href: "/projects", label: "案件別採算", icon: "🏛️" },
+  { href: "/ltv", label: "顧客LTV", icon: "👥" },
   { href: "/settings", label: "設定", icon: "⚙️" },
 ];
 
