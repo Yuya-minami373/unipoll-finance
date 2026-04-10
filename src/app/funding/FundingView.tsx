@@ -298,7 +298,7 @@ function IncomeRow({
         className={`border-b border-slate-100 ${hasSubs ? "cursor-pointer hover:bg-emerald-50/30" : "hover:bg-slate-50/50"}`}
         onClick={hasSubs ? () => setExpanded(!expanded) : undefined}
       >
-        <td className="pl-6 pr-1 py-1 text-black font-medium whitespace-nowrap sticky left-0 bg-white z-10">
+        <td className="pl-3 pr-1 py-1 text-black font-medium whitespace-nowrap sticky left-0 bg-white z-10">
           <span className={`inline-block w-3 text-[9px] text-slate-400 transition-transform ${hasSubs ? (expanded ? "rotate-90" : "") : "invisible"}`}>&#9654;</span>
           {cat}
         </td>
@@ -311,7 +311,7 @@ function IncomeRow({
         const subTotal = months.reduce((s, m) => s + (getSubs(m.operating_income, cat).find((i) => i.sub_category === sub)?.amount ?? 0), 0);
         return (
           <tr key={`${cat}-${sub}`} className="border-b border-slate-50 bg-slate-50/30">
-            <td className="pl-10 pr-1 py-0.5 text-[11px] text-black font-medium whitespace-nowrap sticky left-0 bg-slate-50/30 z-10">{sub}</td>
+            <td className="pl-7 pr-1 py-0.5 text-[11px] text-black font-medium whitespace-nowrap sticky left-0 bg-slate-50/30 z-10">{sub}</td>
             {months.map((m) => {
               const amt = getSubs(m.operating_income, cat).find((i) => i.sub_category === sub)?.amount ?? 0;
               return <td key={m.year_month} className="px-1 py-0.5 text-right text-[11px] text-black whitespace-nowrap">{amt === 0 ? "\u2014" : yen(amt)}</td>;
@@ -358,7 +358,7 @@ function ExpenseRow({
         className={`border-b border-slate-100 ${hasSubs ? "cursor-pointer hover:bg-red-50/30" : "hover:bg-slate-50/50"}`}
         onClick={hasSubs ? () => setExpanded(!expanded) : undefined}
       >
-        <td className="pl-6 pr-1 py-1 text-black font-medium whitespace-nowrap sticky left-0 bg-white z-10">
+        <td className="pl-3 pr-1 py-1 text-black font-medium whitespace-nowrap sticky left-0 bg-white z-10">
           <span className={`inline-block w-3 text-[9px] text-slate-400 transition-transform ${hasSubs ? (expanded ? "rotate-90" : "") : "invisible"}`}>&#9654;</span>
           {cat}
         </td>
@@ -376,7 +376,7 @@ function ExpenseRow({
         }, 0);
         return (
           <tr key={`${cat}-${sub}`} className="border-b border-slate-50 bg-slate-50/30">
-            <td className="pl-10 pr-1 py-0.5 text-[11px] text-black font-medium whitespace-nowrap sticky left-0 bg-slate-50/30 z-10">{sub}</td>
+            <td className="pl-7 pr-1 py-0.5 text-[11px] text-black font-medium whitespace-nowrap sticky left-0 bg-slate-50/30 z-10">{sub}</td>
             {months.map((m) => {
               const subMapItems = subMap[m.year_month]?.[cat];
               const subMapFound = subMapItems?.find((i) => i.sub_category === sub);
@@ -421,7 +421,7 @@ function FundingTable({
   return (
     <table className="w-full text-xs border-collapse table-fixed">
       <colgroup>
-        <col className="w-[120px]" />
+        <col className="w-[190px]" />
         {months.map((m) => (
           <col key={m.year_month} />
         ))}
@@ -462,7 +462,7 @@ function FundingTable({
 
         {/* 経常収入 (sub-header) */}
         <tr className="bg-emerald-50/30">
-          <td className="pl-4 pr-1 py-1 font-medium text-emerald-600 whitespace-nowrap sticky left-0 bg-emerald-50/30 z-10">経常収入</td>
+          <td className="pl-2 pr-1 py-1 font-medium text-emerald-600 whitespace-nowrap sticky left-0 bg-emerald-50/30 z-10">経常収入</td>
           {months.map((m) => (<td key={m.year_month} />))}
           <td className={totalCol} />
         </tr>
@@ -477,7 +477,7 @@ function FundingTable({
 
         {/* 経常支出 (sub-header) */}
         <tr className="bg-red-50/30">
-          <td className="pl-4 pr-1 py-1 font-medium text-red-500 whitespace-nowrap sticky left-0 bg-red-50/30 z-10">経常支出</td>
+          <td className="pl-2 pr-1 py-1 font-medium text-red-500 whitespace-nowrap sticky left-0 bg-red-50/30 z-10">経常支出</td>
           {months.map((m) => (<td key={m.year_month} />))}
           <td className={totalCol} />
         </tr>
@@ -517,7 +517,7 @@ function FundingTable({
                 const total = catTotal((m) => m.investing_income, cat);
                 return (
                   <tr key={`inv-in-${cat}`} className="border-b border-slate-100">
-                    <td className="pl-4 pr-1 py-1 text-black font-medium whitespace-nowrap sticky left-0 bg-white z-10">{cat}</td>
+                    <td className="pl-3 pr-1 py-1 text-black font-medium whitespace-nowrap sticky left-0 bg-white z-10">{cat}</td>
                     {months.map((m) => (
                       <AmountCell key={m.year_month} amount={getAmount(m.investing_income, cat)} type="income" />
                     ))}
@@ -533,7 +533,7 @@ function FundingTable({
                 const total = catTotal((m) => m.investing_expense, cat);
                 return (
                   <tr key={`inv-ex-${cat}`} className="border-b border-slate-100">
-                    <td className="pl-4 pr-1 py-1 text-black font-medium whitespace-nowrap sticky left-0 bg-white z-10">{cat}</td>
+                    <td className="pl-3 pr-1 py-1 text-black font-medium whitespace-nowrap sticky left-0 bg-white z-10">{cat}</td>
                     {months.map((m) => (
                       <AmountCell key={m.year_month} amount={getAmount(m.investing_expense, cat)} type="expense" />
                     ))}
@@ -561,7 +561,7 @@ function FundingTable({
                 const total = catTotal((m) => m.financing_income, cat);
                 return (
                   <tr key={`fin-in-${cat}`} className="border-b border-slate-100">
-                    <td className="pl-4 pr-1 py-1 text-black font-medium whitespace-nowrap sticky left-0 bg-white z-10">{cat}</td>
+                    <td className="pl-3 pr-1 py-1 text-black font-medium whitespace-nowrap sticky left-0 bg-white z-10">{cat}</td>
                     {months.map((m) => (
                       <AmountCell key={m.year_month} amount={getAmount(m.financing_income, cat)} type="income" />
                     ))}
@@ -577,7 +577,7 @@ function FundingTable({
                 const total = catTotal((m) => m.financing_expense, cat);
                 return (
                   <tr key={`fin-ex-${cat}`} className="border-b border-slate-100">
-                    <td className="pl-4 pr-1 py-1 text-black font-medium whitespace-nowrap sticky left-0 bg-white z-10">{cat}</td>
+                    <td className="pl-3 pr-1 py-1 text-black font-medium whitespace-nowrap sticky left-0 bg-white z-10">{cat}</td>
                     {months.map((m) => (
                       <AmountCell key={m.year_month} amount={getAmount(m.financing_expense, cat)} type="expense" />
                     ))}
