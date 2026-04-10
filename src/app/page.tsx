@@ -56,7 +56,11 @@ export default async function Dashboard() {
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-slate-900">ダッシュボード</h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            {String(snapshot.year_month).replace("-", "年")}月時点
+            {(() => {
+              const ym = String(bsSnapshot?.year_month || snapshot.year_month);
+              const [y, m] = ym.split("-");
+              return `${y}年${parseInt(m)}月末時点`;
+            })()}
           </p>
         </div>
         <div className="text-right">
