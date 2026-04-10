@@ -61,11 +61,11 @@ const snapshots = [
 
 // ── 1-2. Service P/L ────────────────────────────────
 const servicePL = [
-  { year_month: "2026-01", service_name: "入札支援", revenue: 700000, cost: 0, gross_profit: 700000 },
+  { year_month: "2026-01", service_name: "入札支援", revenue: 770000, cost: 0, gross_profit: 770000 },
   { year_month: "2026-01", service_name: "クルー", revenue: 0, cost: 0, gross_profit: 0 },
-  { year_month: "2026-02", service_name: "入札支援", revenue: 753676, cost: 0, gross_profit: 753676 },
+  { year_month: "2026-02", service_name: "入札支援", revenue: 829044, cost: 0, gross_profit: 829044 },
   { year_month: "2026-02", service_name: "クルー", revenue: 950000, cost: 396388, gross_profit: 553612 },
-  { year_month: "2026-03", service_name: "入札支援", revenue: 700000, cost: 0, gross_profit: 700000 },
+  { year_month: "2026-03", service_name: "入札支援", revenue: 770000, cost: 0, gross_profit: 770000 },
   { year_month: "2026-03", service_name: "クルー", revenue: 0, cost: 0, gross_profit: 0 },
 ];
 
@@ -125,16 +125,16 @@ const bs = {
 
 // ── 1-5. Project P/L ────────────────────────────────
 const projectPL = [
-  { year_month: "2026-01", municipality: "Green Plus", service_name: "入札支援", revenue: 500000, cost: 0 },
-  { year_month: "2026-01", municipality: "リベラック", service_name: "入札支援", revenue: 100000, cost: 0 },
-  { year_month: "2026-01", municipality: "Gopal", service_name: "入札支援", revenue: 100000, cost: 0 },
-  { year_month: "2026-02", municipality: "Green Plus", service_name: "入札支援", revenue: 553676, cost: 0 },
-  { year_month: "2026-02", municipality: "リベラック", service_name: "入札支援", revenue: 200000, cost: 0 },
-  { year_month: "2026-02", municipality: "Gopal", service_name: "入札支援", revenue: 100000, cost: 0 },
+  { year_month: "2026-01", municipality: "Green Plus", service_name: "入札支援", revenue: 550000, cost: 0 },
+  { year_month: "2026-01", municipality: "リベラック", service_name: "入札支援", revenue: 110000, cost: 0 },
+  { year_month: "2026-01", municipality: "Gopal", service_name: "入札支援", revenue: 110000, cost: 0 },
+  { year_month: "2026-02", municipality: "Green Plus", service_name: "入札支援", revenue: 609044, cost: 0 },
+  { year_month: "2026-02", municipality: "リベラック", service_name: "入札支援", revenue: 110000, cost: 0 },
+  { year_month: "2026-02", municipality: "Gopal", service_name: "入札支援", revenue: 110000, cost: 0 },
   { year_month: "2026-02", municipality: "深谷市", service_name: "クルー", revenue: 950000, cost: 396388 },
-  { year_month: "2026-03", municipality: "Green Plus", service_name: "入札支援", revenue: 500000, cost: 0 },
-  { year_month: "2026-03", municipality: "リベラック", service_name: "入札支援", revenue: 100000, cost: 0 },
-  { year_month: "2026-03", municipality: "Gopal", service_name: "入札支援", revenue: 100000, cost: 0 },
+  { year_month: "2026-03", municipality: "Green Plus", service_name: "入札支援", revenue: 550000, cost: 0 },
+  { year_month: "2026-03", municipality: "リベラック", service_name: "入札支援", revenue: 110000, cost: 0 },
+  { year_month: "2026-03", municipality: "Gopal", service_name: "入札支援", revenue: 110000, cost: 0 },
 ];
 
 // ── 1-6. Receivables ────────────────────────────────
