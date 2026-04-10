@@ -1,4 +1,4 @@
-import { yen } from "@/lib/format";
+import { yen, toJST } from "@/lib/format";
 import { getLastSync, getRecurringItems, getMonthlyFixedCostEstimate } from "@/lib/finance";
 import { dbAll } from "@/lib/db";
 import FixedCostForm from "@/components/FixedCostForm";
@@ -39,7 +39,7 @@ export default async function SettingsPage() {
         <h2 className="text-sm font-semibold text-slate-600 mb-4">データ同期</h2>
         <div className="flex items-center gap-3 mb-4">
           <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-          <span className="text-sm text-slate-700">最終同期: {lastSync || "未同期"}</span>
+          <span className="text-sm text-slate-700">最終同期: {toJST(lastSync)}</span>
         </div>
         <p className="text-xs text-slate-400">
           同期はケイ（経理エージェント）経由で実行されます。<br />
@@ -51,7 +51,7 @@ export default async function SettingsPage() {
           {syncLogs.map((log) => (
             <div key={log.id} className="flex items-center gap-2 text-xs text-slate-500">
               <span className={String(log.status) === "success" ? "text-emerald-500" : "text-red-500"}>●</span>
-              <span>{String(log.synced_at)}</span>
+              <span>{toJST(String(log.synced_at))}</span>
               <span className="text-slate-400">{String(log.source)}</span>
               {log.details && <span className="text-slate-400 truncate max-w-[300px]">{String(log.details)}</span>}
             </div>

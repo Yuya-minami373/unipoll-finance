@@ -1,4 +1,4 @@
-import { yen, pctChange } from "@/lib/format";
+import { yen, pctChange, toJST } from "@/lib/format";
 import KPICard from "@/components/KPICard";
 import AlertBanner from "@/components/AlertBanner";
 import RunwayGauge from "@/components/charts/RunwayGauge";
@@ -61,7 +61,7 @@ export default async function Dashboard() {
         </div>
         <div className="text-right">
           <p className="text-[10px] text-slate-400">最終同期</p>
-          <p className="text-xs text-slate-500">{lastSync || "未同期"}</p>
+          <p className="text-xs text-slate-500">{toJST(lastSync)}</p>
         </div>
       </div>
 
