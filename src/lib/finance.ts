@@ -536,7 +536,7 @@ export const SECTION_LABELS: Record<string, string> = {
 // Standard income categories (row order)
 export const INCOME_CATEGORIES = [
   "入札支援サービス",
-  "案件獲得パートナー報酬",
+  "インセンティブ報酬",
   "Opsデザイン",
   "UniPollクルー",
   "アウトリーチ",
