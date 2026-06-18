@@ -239,6 +239,66 @@ export async function getExpenseTotalsByMonth(): Promise<Array<{ year_month: str
   `) as unknown as Array<{ year_month: string; fixed: number; variable: number; total: number }>;
 }
 
+// ============ 費目別月次P/L（クロス集計）+ 社保発生主義補正 ============
+
+export interface CategoryMonthExpense {
+  year_month: string;
+  category: string;
+  amount: number;
+  is_fixed: number;
+}
+
+// 費目×月のクロス集計。aggregate行（sub_category=''）のみを対象にし、詳細行との二重計上を回避する。
+export async function getExpenseByCategoryByMonth(): Promise<CategoryMonthExpense[]> {
+  return await dbAll(`
+    SELECT year_month, category, SUM(amount) as amount, MAX(is_fixed) as is_fixed
+    FROM expense_breakdown
+    WHERE sub_category = ''
+    GROUP BY year_month, category
+    ORDER BY year_month ASC, is_fixed DESC, amount DESC
+  `) as unknown as CategoryMonthExpense[];
+}
+
+// 社保（法定福利費）の発生主義補正の設定。
+// freeeの「自動で経理」は社保引落を現金主義（記帳日）で計上するため、当月分が翌月末納付で月次がデコボコになる。
+// 管理会計のP/Lは発生主義で見るべきなので、表示層だけ月額平準化に置換する（freee本体・税務・資金繰り表は触らない）。
+export interface ShahoAccrualConfig {
+  monthlyAmount: number;   // 月額平準化額（円）。0 = 補正OFF
+  startMonth: string;      // 適用開始月 "YYYY-MM"（この月以降に適用。それ以前は据え置き）
+  category: string;        // 補正対象の費目名
+}
+
+export const SHAHO_ACCRUAL_CATEGORY = "法定福利費";
+export const SHAHO_ACCRUAL_DEFAULT_MONTHLY = 92192;
+export const SHAHO_ACCRUAL_DEFAULT_START = "2026-04";
+
+export async function getShahoAccrualConfig(): Promise<ShahoAccrualConfig> {
+  const [amount, start] = await Promise.all([
+    getSetting("shaho_accrual_monthly"),
+    getSetting("shaho_accrual_start"),
+  ]);
+  const parsed = amount != null ? parseInt(amount, 10) : NaN;
+  return {
+    monthlyAmount: Number.isFinite(parsed) ? parsed : SHAHO_ACCRUAL_DEFAULT_MONTHLY,
+    startMonth: start || SHAHO_ACCRUAL_DEFAULT_START,
+    category: SHAHO_ACCRUAL_CATEGORY,
+  };
+}
+
+// その月の社保補正デルタ（費用に＋／損益から−する額）を返す。
+// 補正対象月（startMonth以降）かつ補正ON（monthlyAmount>0）のときのみ。
+// rawShahoAmount = freee実績の法定福利費（その月の行が無ければ0）。
+// 例: 2026-04 raw=46,304 → delta=+45,888 / 2026-05 raw=0 → delta=+92,192。
+export function shahoCorrectionDelta(
+  yearMonth: string,
+  rawShahoAmount: number,
+  config: ShahoAccrualConfig,
+): number {
+  if (config.monthlyAmount <= 0) return 0;
+  if (yearMonth < config.startMonth) return 0;
+  return config.monthlyAmount - rawShahoAmount;
+}
+
 // Get YTD summary — uses a single aggregate query instead of fetching all snapshots
 export async function getYTDSummary(): Promise<{ revenue: number; expense: number; netIncome: number; months: number }> {
   const row = await dbGet(`

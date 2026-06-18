@@ -109,6 +109,15 @@ async function initDb() {
         sql: `INSERT OR IGNORE INTO app_settings (key, value) VALUES ('monthly_fixed_cost_estimate', '542000')`,
         args: [],
       },
+      // 社保（法定福利費）発生主義補正の既定値
+      {
+        sql: `INSERT OR IGNORE INTO app_settings (key, value) VALUES ('shaho_accrual_monthly', '92192')`,
+        args: [],
+      },
+      {
+        sql: `INSERT OR IGNORE INTO app_settings (key, value) VALUES ('shaho_accrual_start', '2026-04')`,
+        args: [],
+      },
       // Project-level profitability
       {
         sql: `CREATE TABLE IF NOT EXISTS project_profitability (

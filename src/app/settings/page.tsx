@@ -1,17 +1,19 @@
 import { yen, toJST } from "@/lib/format";
-import { getLastSync, getRecurringItems, getMonthlyFixedCostEstimate } from "@/lib/finance";
+import { getLastSync, getRecurringItems, getMonthlyFixedCostEstimate, getShahoAccrualConfig } from "@/lib/finance";
 import { dbAll } from "@/lib/db";
 import FixedCostForm from "@/components/FixedCostForm";
+import ShahoAccrualForm from "@/components/ShahoAccrualForm";
 import RecurringItemsManager from "@/components/RecurringItemsManager";
 import BudgetManager from "@/components/BudgetManager";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const [lastSync, recurring, fixedCostEstimate, syncLogs] = await Promise.all([
+  const [lastSync, recurring, fixedCostEstimate, shahoConfig, syncLogs] = await Promise.all([
     getLastSync(),
     getRecurringItems(),
     getMonthlyFixedCostEstimate(),
+    getShahoAccrualConfig(),
     dbAll("SELECT * FROM sync_log ORDER BY id DESC LIMIT 10") as Promise<Array<{
       id: number; synced_at: string; source: string; status: string; details: string | null;
     }>>,
@@ -32,6 +34,17 @@ export default async function SettingsPage() {
           過去の実績ではなく、将来の見込み額を入力してください。
         </p>
         <FixedCostForm initialValue={fixedCostEstimate} />
+      </div>
+
+      {/* 社保 発生主義補正 */}
+      <div className="card p-4 md:p-6">
+        <h2 className="text-sm font-semibold text-slate-600 mb-2">社保（法定福利費）発生主義補正</h2>
+        <p className="text-xs text-slate-400 mb-4">
+          freeeの社保引落は現金主義（翌月末納付分が引落月に計上）で月次がデコボコになります。<br />
+          月次P/Lでは法定福利費を「月額平準化額」に置換し、各月がその月の社保コストを負担する発生主義で表示します。<br />
+          freee本体・税務・資金繰り表（現金主義）は変更しません。
+        </p>
+        <ShahoAccrualForm initialMonthly={shahoConfig.monthlyAmount} initialStart={shahoConfig.startMonth} />
       </div>
 
       {/* Sync status */}
